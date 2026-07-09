@@ -1,6 +1,7 @@
 # local secrets and runtime state
 data/settings.json
 data/codex-last-*.txt
+data/kanban.json
 .env
 .env.*
 

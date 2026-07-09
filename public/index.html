@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Masa Life Command</title>
-    <link rel="stylesheet" href="/styles.css?v=20260708-07" />
+    <link rel="stylesheet" href="/styles.css?v=20260709-kanban" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -19,6 +19,7 @@
         <nav class="nav-list" aria-label="メイン">
           <button class="nav-item active" type="button" data-view="today">今日</button>
           <button class="nav-item" type="button" data-view="todos">TODO</button>
+          <button class="nav-item" type="button" data-view="kanban">Kanban</button>
           <button class="nav-item" type="button" data-view="diary">日記</button>
           <button class="nav-item" type="button" data-view="study">勉強</button>
           <button class="nav-item" type="button" data-view="settings">設定</button>
@@ -78,6 +79,17 @@
           <div id="calendarList" class="calendar-list">
             <div class="empty compact-empty">設定でGoogle CalendarのiCal URLを保存してください。</div>
           </div>
+        </section>
+
+        <section id="kanbanPanel" class="panel kanban-panel" hidden>
+          <div class="panel-head">
+            <div>
+              <h2>Kanban</h2>
+              <p id="kanbanSummary">TODOを読み込み中</p>
+            </div>
+            <button id="kanbanRefresh" class="secondary-button" type="button">更新</button>
+          </div>
+          <div id="kanbanBoard" class="kanban-board"></div>
         </section>
         <section class="grid">
           <div class="panel main-panel">
@@ -342,57 +354,7 @@
         </section>
       </main>
     </div>
-    <script src="/app.js?v=20260708-07" type="module"></script>
+    <script src="/app.js?v=20260709-kanban" type="module"></script>
   </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

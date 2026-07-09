@@ -12,6 +12,7 @@ const PORT = Number(process.env.PORT || 5177);
 const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
+const KANBAN_PATH = path.join(DATA_DIR, "kanban.json");
 const GOOGLE_REDIRECT_URI = `http://127.0.0.1:${PORT}/api/google/oauth/callback`;
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
@@ -103,6 +104,40 @@ async function fileExists(target) {
   }
 }
 
+
+async function readKanban() {
+  const saved = await readJson(KANBAN_PATH, {});
+  const rawItems = saved && typeof saved.items === "object" && saved.items ? saved.items : {};
+  const allowed = new Set(["today", "focus", "waiting"]);
+  const items = {};
+  for (const [taskId, status] of Object.entries(rawItems)) {
+    const key = String(taskId || "").trim();
+    const value = String(status || "").trim();
+    if (key && allowed.has(value)) items[key] = value;
+  }
+  return { items };
+}
+
+async function saveKanban(kanban) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  const next = { items: kanban.items || {} };
+  await fs.writeFile(KANBAN_PATH, JSON.stringify(next, null, 2), "utf8");
+  return next;
+}
+
+async function moveKanbanTask(taskId, status) {
+  const id = String(taskId || "").trim();
+  const nextStatus = String(status || "backlog").trim();
+  if (!id) throw new Error("Kanbanへ移動するTODOが見つかりません。");
+  if (!["backlog", "today", "focus", "waiting"].includes(nextStatus)) throw new Error("Kanbanの移動先が不正です。");
+  const kanban = await readKanban();
+  if (nextStatus === "backlog") {
+    delete kanban.items[id];
+  } else {
+    kanban.items[id] = nextStatus;
+  }
+  return saveKanban(kanban);
+}
 async function readJson(filePath, fallback) {
   try {
     return JSON.parse(await fs.readFile(filePath, "utf8"));
@@ -1188,6 +1223,7 @@ function googleDueDate(task) {
 
 function googleTaskToFocusTodo(task) {
   return {
+    id: `google:${task.id}`,
     source: "Google Tasks",
     title: task.title || "無題",
     category: task.category || "google",
@@ -1199,6 +1235,7 @@ function googleTaskToFocusTodo(task) {
 
 function obsidianTaskToFocusTodo(task) {
   return {
+    id: task.id,
     source: "Obsidian",
     title: task.title || "無題",
     category: task.category || "normal",
@@ -1216,7 +1253,8 @@ function pickFocusTodo(snapshot) {
     const bDue = b.dueDate || "9999-99-99";
     return aDue.localeCompare(bDue) || String(a.title).localeCompare(String(b.title));
   });
-  return todos[0] || null;
+  const kanbanItems = snapshot.kanban?.items || {};
+  return todos.find((todo) => kanbanItems[todo.id] === "focus") || todos[0] || null;
 }
 
 function focusSendHeading(target) {
@@ -1300,6 +1338,7 @@ async function appState() {
     : { diaryRelPath: dailyDiaryRelPath(), diaryExists: false, completionLines: [], studyLines: [], memoLines: [] };
   const calendar = await readCalendar(settings);
   const googleTasks = await readGoogleTasks(settings);
+  const kanban = await readKanban();
 
   return {
     today: todayParts().isoDate,
@@ -1308,7 +1347,8 @@ async function appState() {
     ...taskResult,
     ...diary,
     calendar,
-    googleTasks
+    googleTasks,
+    kanban
   };
 }
 
@@ -1371,6 +1411,11 @@ async function handleApi(req, res, url) {
       return res.end("<h1>Google Calendar connected</h1><p>Masa Life Commandに戻って再読み込みしてください。</p>");
     }
 
+    if (req.method === "POST" && url.pathname === "/api/kanban/move") {
+      const body = await parseJsonBody(req);
+      const kanban = await moveKanbanTask(body.taskId, body.status);
+      return sendJson(res, 200, { kanban, state: await appState() });
+    }
     if (req.method === "POST" && url.pathname === "/api/google-tasks") {
       const settings = await loadSettings();
       const body = await parseJsonBody(req);
@@ -1489,49 +1534,4 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Masa Life Command is running at http://localhost:${PORT}`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

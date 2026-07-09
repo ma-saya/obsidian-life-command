@@ -33,6 +33,10 @@ const els = {
   todoSummary: document.querySelector("#todoSummary"),
   todoList: document.querySelector("#todoList"),
   todoCategoryTabs: document.querySelector("#todoCategoryTabs"),
+  kanbanPanel: document.querySelector("#kanbanPanel"),
+  kanbanSummary: document.querySelector("#kanbanSummary"),
+  kanbanBoard: document.querySelector("#kanbanBoard"),
+  kanbanRefresh: document.querySelector("#kanbanRefresh"),
   calendarSummary: document.querySelector("#calendarSummary"),
   calendarList: document.querySelector("#calendarList"),
   calendarToggle: document.querySelector("#calendarToggle"),
@@ -523,6 +527,76 @@ function combinedTodoItems(tasks) {
   return [...obsidianTasks, ...googleOnlyTasks];
 }
 
+
+const KANBAN_COLUMNS = [
+  { id: "backlog", title: "未整理", hint: "まだ扱いを決めていないTODO" },
+  { id: "today", title: "今日やる", hint: "今日中に進めたいTODO" },
+  { id: "focus", title: "今やる", hint: "司令塔のFocusTODOになります" },
+  { id: "waiting", title: "待ち", hint: "返事待ち・保留中" }
+];
+
+function kanbanItems() {
+  return state.data?.kanban?.items || {};
+}
+
+function kanbanStatus(task) {
+  return kanbanItems()[task.id] || "backlog";
+}
+
+function kanbanTaskMeta(task) {
+  const due = task.dueDate ? `<span class="chip">📅 ${escapeHtml(task.dueDate)}</span>` : "";
+  const category = `<span class="chip">${escapeHtml(categoryName(task.category || categoryIdFromTask(task)))}</span>`;
+  const source = task.source === "google"
+    ? `<span>${escapeHtml(task.taskListTitle ? `Google Tasks / ${task.taskListTitle}` : "Google Tasks")}</span>`
+    : `<span>${escapeHtml(shortFileName(task.fileRel))}:${task.lineIndex + 1}</span>`;
+  return `${category}${due}${source}`;
+}
+
+function renderKanbanCard(task) {
+  const activeStatus = kanbanStatus(task);
+  const moveButtons = KANBAN_COLUMNS
+    .filter((column) => column.id !== activeStatus)
+    .map((column) => `<button class="mini-action-button kanban-move" type="button" data-task-id="${escapeHtml(task.id)}" data-status="${escapeHtml(column.id)}">${escapeHtml(column.title)}</button>`)
+    .join("");
+  const completeButton = task.source === "google"
+    ? `<button class="secondary-button complete-google-task" type="button" data-google-task-id="${escapeHtml(task.googleTaskId)}" data-google-task-list-id="${escapeHtml(task.taskListId || "")}">完了</button>`
+    : `<button class="secondary-button complete-task" type="button">完了</button>`;
+  return `
+    <article class="kanban-card todo-row" data-id="${escapeHtml(task.id)}">
+      <div class="todo-check">✓</div>
+      <div>
+        <div class="todo-title">${escapeHtml(task.title)}</div>
+        <div class="todo-meta">${kanbanTaskMeta(task)}</div>
+        <div class="kanban-card-actions">
+          ${moveButtons}
+          ${completeButton}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderKanban(data) {
+  if (!els.kanbanBoard || !els.kanbanSummary) return;
+  const tasks = combinedTodoItems(data.tasks || []);
+  const counts = KANBAN_COLUMNS.map((column) => tasks.filter((task) => kanbanStatus(task) === column.id).length);
+  els.kanbanSummary.textContent = `${tasks.length}件 / 今やる ${counts[KANBAN_COLUMNS.findIndex((column) => column.id === "focus")]}件`;
+  els.kanbanBoard.innerHTML = KANBAN_COLUMNS.map((column) => {
+    const columnTasks = tasks.filter((task) => kanbanStatus(task) === column.id);
+    const cards = columnTasks.length
+      ? columnTasks.map(renderKanbanCard).join("")
+      : `<div class="empty compact-empty">${escapeHtml(column.hint)}</div>`;
+    return `
+      <section class="kanban-column" data-kanban-column="${escapeHtml(column.id)}">
+        <div class="kanban-column-head">
+          <h3>${escapeHtml(column.title)}</h3>
+          <span>${columnTasks.length}件</span>
+        </div>
+        <div class="kanban-column-body">${cards}</div>
+      </section>
+    `;
+  }).join("");
+}
 function renderCommander(data) {
   if (!els.commanderSummary) return;
   const now = new Date();
@@ -536,7 +610,7 @@ function renderCommander(data) {
     const bDue = b.dueDate || "9999-99-99";
     return aDue.localeCompare(bDue) || String(a.title).localeCompare(String(b.title));
   });
-  const focus = todos[0];
+  const focus = todos.find((task) => kanbanStatus(task) === "focus") || todos[0];
   const completionCount = data.completionLines?.length || 0;
   const studyCount = data.studyLines?.length || 0;
 
@@ -863,6 +937,7 @@ function render(data) {
   els.aiModelLabel.textContent = els.ollamaModelInput.value || "Ollama";
   renderCommander(data);
   renderTasks(data.tasks || []);
+  renderKanban(data);
   renderCalendar(data.calendar);
   renderGoogleTasks(data.googleTasks);
   renderLog(els.completionLog, data.completionLines, "今日の完了ログはまだありません。");
@@ -954,6 +1029,26 @@ document.addEventListener("click", async (event) => {
     if (target) {
       target.className = "calendar-detail empty compact-empty";
       target.textContent = "予定をクリックすると詳細を表示します。";
+    }
+    return;
+  }
+
+  const kanbanMoveButton = event.target.closest(".kanban-move");
+  if (kanbanMoveButton) {
+    kanbanMoveButton.disabled = true;
+    try {
+      const result = await api("/api/kanban/move", {
+        method: "POST",
+        body: JSON.stringify({
+          taskId: kanbanMoveButton.dataset.taskId,
+          status: kanbanMoveButton.dataset.status
+        })
+      });
+      render(result.state);
+      showMessage("Kanbanを更新しました。");
+    } catch (error) {
+      showMessage(error.message, "error");
+      kanbanMoveButton.disabled = false;
     }
     return;
   }
@@ -1133,7 +1228,9 @@ els.sendFocusTodoButton?.addEventListener("click", async () => {
   }
 });
 els.refreshButton.addEventListener("click", refresh);
-els.todoRefresh.addEventListener("click", refresh);els.googleConnectButton.addEventListener("click", async () => {
+els.todoRefresh.addEventListener("click", refresh);
+els.kanbanRefresh?.addEventListener("click", refresh);
+els.googleConnectButton.addEventListener("click", async () => {
   try {
     await api("/api/config", {
       method: "POST",
@@ -1415,75 +1512,13 @@ document.querySelectorAll(".nav-item").forEach((button) => {
     document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
     button.classList.add("active");
     const showSettings = button.dataset.view === "settings";
+    const showKanban = button.dataset.view === "kanban";
     els.settingsPanel.hidden = !showSettings;
+    if (els.kanbanPanel) els.kanbanPanel.hidden = !showKanban;
     if (showSettings) els.settingsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (showKanban) els.kanbanPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 });
 
 refresh();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
