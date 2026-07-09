@@ -1,0 +1,27 @@
+{
+  "vaultPath": "C:\\path\\to\\your\\ObsidianVault",
+  "ollamaUrl": "http://localhost:11434",
+  "ollamaModel": "qwen3:14b",
+  "calendarIcsUrl": "",
+  "googleClientId": "",
+  "googleClientSecret": "",
+  "googleCalendarId": "primary",
+  "googleTaskListId": "",
+  "googleTaskCategoryListIds": {
+    "normal": "",
+    "reading": "",
+    "google": ""
+  },
+  "todoCategories": [
+    { "id": "normal", "name": "通常TODO", "googleTaskListId": "" },
+    { "id": "reading", "name": "読書TODO", "googleTaskListId": "" },
+    { "id": "google", "name": "Google Tasks", "googleTaskListId": "" }
+  ],
+  "googleTokens": null,
+  "taskFiles": [
+    "07_タスク管理/📥_受信箱.md",
+    "07_タスク管理/🏆_タスク管理.md",
+    "07_タスク管理/📁_プロジェクト.md",
+    "07_タスク管理/💭_いつかやる.md"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "masa-life-command-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Localhost command center for Masa Life-OS Obsidian vault.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

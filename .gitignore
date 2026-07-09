@@ -1,0 +1,17 @@
+# local secrets and runtime state
+data/settings.json
+data/codex-last-*.txt
+.env
+.env.*
+
+# dependencies / logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/

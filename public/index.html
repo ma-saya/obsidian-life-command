@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Masa Life Command</title>
+    <link rel="stylesheet" href="/styles.css?v=20260708-07" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">ML</div>
+          <div>
+            <strong>Masa Life Command</strong>
+            <span>Obsidian local MVP</span>
+          </div>
+        </div>
+        <nav class="nav-list" aria-label="メイン">
+          <button class="nav-item active" type="button" data-view="today">今日</button>
+          <button class="nav-item" type="button" data-view="todos">TODO</button>
+          <button class="nav-item" type="button" data-view="diary">日記</button>
+          <button class="nav-item" type="button" data-view="study">勉強</button>
+          <button class="nav-item" type="button" data-view="settings">設定</button>
+        </nav>
+        <div class="sidebar-foot">
+          <span class="status-dot" id="vaultDot"></span>
+          <span id="vaultStatus">Vault確認中</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>今日</h1>
+            <p id="todayLine">読み込み中...</p>
+          </div>
+          <button id="refreshButton" class="icon-button" type="button" title="再読み込み" aria-label="再読み込み">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+              <path d="M20 4v6h-6" />
+            </svg>
+          </button>
+        </header>
+
+        <div id="message" class="message" hidden></div>
+
+        <section id="commanderPanel" class="commander-panel">
+          <div class="commander-head">
+            <div>
+              <h2>司令塔</h2>
+              <p id="commanderSummary">今日の動き方を読み込み中</p>
+            </div>
+            <div class="commander-ai-controls">
+              <select id="commanderAiMode" aria-label="作戦AI">
+                <option value="local">ローカルAI</option>
+                <option value="codex">Codex</option>
+              </select>
+              <button id="commanderAiButton" class="secondary-button" type="button">AIに作戦を聞く</button>
+            </div>
+          </div>
+          <div class="commander-grid">
+            <div class="commander-card"><span>次の予定</span><strong id="commanderNextEvent">-</strong><p id="commanderNextEventMeta"></p></div>
+            <div class="commander-card focus-card"><span>今やるTODO</span><strong id="commanderFocusTodo">-</strong><p id="commanderFocusTodoMeta"></p><div class="focus-send-row"><select id="focusSendTarget" aria-label="FocusTODO送信先"><option value="focus">FocusTODO</option><option value="study">学習ログ</option><option value="memo">今日のメモ</option></select><button id="sendFocusTodoButton" class="mini-action-button" type="button">送る</button></div></div>
+            <div class="commander-card"><span>学習</span><strong id="commanderStudy">-</strong><p id="commanderStudyMeta"></p></div>
+            <div class="commander-card"><span>今日の記録</span><strong id="commanderLog">-</strong><p id="commanderLogMeta"></p></div>
+          </div>
+        </section>
+
+        <section class="panel calendar-panel">
+          <div class="panel-head compact">
+            <h2>Google Calendar</h2>
+            <div class="panel-head-actions">
+              <span id="calendarSummary" class="path-label">未連携</span>
+              <button id="calendarToggle" class="icon-button" type="button" aria-expanded="false" title="月カレンダーを表示">▾</button>
+            </div>
+          </div>
+          <div id="calendarList" class="calendar-list">
+            <div class="empty compact-empty">設定でGoogle CalendarのiCal URLを保存してください。</div>
+          </div>
+        </section>
+        <section class="grid">
+          <div class="panel main-panel">
+            <div class="panel-head">
+              <div>
+                <h2>TODO</h2>
+                <p id="todoSummary">未完了タスクを読み込み中</p>
+              </div>
+              <button id="todoRefresh" class="secondary-button" type="button">更新</button>
+            </div>
+            <div id="todoCategoryTabs" class="todo-category-tabs" aria-label="TODOカテゴリー">
+              <button class="todo-category-tab active" type="button" data-todo-category="normal">通常</button>
+              <button class="todo-category-tab" type="button" data-todo-category="reading">読書</button>
+              <button class="todo-category-tab" type="button" data-todo-category="google">Google</button>
+              <button class="todo-category-tab" type="button" data-todo-category="all">全部</button>
+            </div>
+            <div id="todoList" class="todo-list"></div>
+            <div id="calendarTimelineHost" class="calendar-timeline-host"></div>
+          </div>
+
+          <div class="stack">
+                        <section class="panel ai-panel">
+              <div class="panel-head compact">
+                <h2>AI秘書</h2>
+                <span id="aiModelLabel" class="path-label">Ollama</span>
+              </div>
+              <p class="settings-note">未完了TODOと今日のログだけを使って、優先順位提案と相談ができます。</p>
+              <button id="aiPriorityButton" class="primary-button" type="button">AIに優先順位を聞く</button>
+              <form id="aiConsultForm" class="form-stack ai-consult-form">
+                <label>
+                  相談
+                  <textarea id="aiConsultText" rows="4" placeholder="例: 今日どれから手をつけるべき？ Java学習の進め方を相談したい"></textarea>
+                </label>
+                <button id="aiConsultButton" class="secondary-button" type="submit">相談する</button>
+              </form>
+              <div id="aiPriorityResult" class="ai-result">まだ提案はありません。</div>
+            </section>
+            <section class="panel codex-panel">
+              <div class="panel-head compact">
+                <h2>Codex</h2>
+                <span class="path-label">read-only</span>
+              </div>
+              <form id="codexForm" class="form-stack">
+                <label>
+                  相談・実装相談
+                  <textarea id="codexPrompt" rows="4" placeholder="例: このアプリに次に足すべき機能を整理して / TODO周りの設計を見直して"></textarea>
+                </label>
+                <label class="inline-check"><input id="codexIncludeContext" type="checkbox" /> TODO・予定・今日のログを含める</label>
+                <button id="codexSubmit" class="primary-button" type="submit">Codexに聞く</button>
+              </form>
+              <div id="codexResult" class="codex-result">まだCodexへの相談はありません。</div>
+            </section>
+            <section class="panel">
+              <div class="panel-head compact">
+                <h2>予定追加</h2>
+                <span id="googleCalendarStatus" class="path-label">Google未接続</span>
+              </div>
+              <form id="calendarEventForm" class="form-stack">
+                <label>
+                  タイトル
+                  <input id="calendarEventTitle" type="text" placeholder="例: Java学習" required />
+                </label>
+                <div class="form-grid-two">
+                  <label>
+                    日付
+                    <input id="calendarEventDate" type="date" required />
+                  </label>
+                  <label>
+                    場所
+                    <input id="calendarEventLocation" type="text" placeholder="任意" />
+                  </label>
+                </div>
+                <div class="form-grid-two">
+                  <label>
+                    開始
+                    <input id="calendarEventStart" type="time" required />
+                  </label>
+                  <label>
+                    終了
+                    <input id="calendarEventEnd" type="time" required />
+                  </label>
+                </div>
+                <label>
+                  メモ
+                  <textarea id="calendarEventDescription" rows="3" placeholder="任意"></textarea>
+                </label>
+                <button id="calendarEventSubmit" class="primary-button" type="submit">Google Calendarへ追加</button>
+                <div id="calendarEventFeedback" class="form-feedback" hidden></div>
+              </form>
+            </section>
+            <section class="panel">
+              <div class="panel-head compact">
+                <h2>Google Tasks</h2>
+                <div class="panel-head-actions">
+                  <span id="googleTasksStatus" class="path-label">未接続</span>
+                  <button id="googleTasksToggle" class="icon-button" type="button" aria-expanded="false" title="Google Tasks一覧を表示">▾</button>
+                </div>
+              </div>
+              <form id="googleTaskForm" class="form-stack">
+                <label>
+                  TODO
+                  <input id="googleTaskTitle" type="text" placeholder="例: 仮免の標識問題を解く" />
+                </label>
+                <label>
+                  期限
+                  <input id="googleTaskDue" type="date" />
+                </label>
+                <label>
+                  メモ
+                  <textarea id="googleTaskNotes" rows="3" placeholder="任意"></textarea>
+                </label>
+                <button id="googleTaskSubmit" class="primary-button" type="submit">Google Tasksへ追加</button>
+                <button id="syncObsidianTasksButton" class="secondary-button" type="button">Obsidian TODOを同期</button>
+                <div id="googleTaskFeedback" class="form-feedback" hidden></div>
+              </form>
+              <div id="googleTasksList" class="mini-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head compact">
+                <h2>TODO追加</h2>
+                <span class="path-label">受信箱</span>
+              </div>
+              <form id="todoAddForm" class="form-stack">
+                <label>
+                  TODO
+                  <input id="todoTitleInput" type="text" placeholder="例: Javaの継承を30分復習する" />
+                </label>
+                <label>
+                  種別
+                  <select id="todoKindInput"></select>
+                </label>
+                <label>
+                  期限
+                  <input id="todoDueInput" type="date" />
+                </label>
+                <button class="primary-button" type="submit">TODOを追加</button>
+              </form>
+              <div class="category-settings compact-category-settings">
+                <div class="category-settings-head">
+                  <div>
+                    <strong>カテゴリー</strong>
+                    <span id="categorySummary" class="path-label"></span>
+                  </div>
+                  <button id="categoryToggle" class="icon-button" type="button" aria-expanded="false" title="カテゴリー管理を表示">▾</button>
+                </div>
+                <div id="categorySettingsBody" class="category-settings-body" hidden>
+                  <div id="categorySettingsList" class="category-settings-list"></div>
+                  <div class="category-add-row">
+                    <input id="categoryNameInput" type="text" placeholder="新しいカテゴリー名" />
+                    <select id="categoryTaskListInput"></select>
+                    <button id="addCategoryButton" class="secondary-button" type="button">追加</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+<section class="panel">
+              <div class="panel-head compact">
+                <h2>日記追記</h2>
+                <span id="diaryPath" class="path-label"></span>
+              </div>
+              <form id="diaryForm" class="form-stack">
+                <label>
+                  見出し
+                  <select id="diaryHeading">
+                    <option>今日のメモ</option>
+                    <option>今日の完了</option>
+                    <option>学習ログ</option>
+                  </select>
+                </label>
+                <label>
+                  本文
+                  <textarea id="diaryText" rows="4" placeholder="今のメモを短く残す"></textarea>
+                </label>
+                <button class="primary-button" type="submit">日記へ追記</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head compact">
+                <h2>勉強タイマー</h2>
+                <span id="timerState" class="state-label">停止中</span>
+              </div>
+              <div class="timer-display" id="timerDisplay">00:00:00</div>
+              <form id="studyForm" class="form-stack">
+                <label>
+                  カテゴリ
+                  <select id="studyCategory">
+                    <option>Java</option>
+                    <option>プログラミング</option>
+                    <option>英語</option>
+                    <option>読書</option>
+                    <option>資格</option>
+                    <option>その他</option>
+                  </select>
+                </label>
+                <label>
+                  メモ
+                  <input id="studyMemo" type="text" placeholder="例: 継承の復習" />
+                </label>
+                <div class="button-row">
+                  <button id="startTimer" class="secondary-button" type="button">開始</button>
+                  <button id="stopTimer" class="secondary-button" type="button" disabled>停止</button>
+                  <button class="primary-button" type="submit">学習ログ追記</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section class="log-grid">
+          <div class="panel">
+            <h2>今日の完了</h2>
+            <div id="completionLog" class="log-list"></div>
+          </div>
+          <div class="panel">
+            <h2>学習ログ</h2>
+            <div id="studyLog" class="log-list"></div>
+          </div>
+        </section>
+
+        <section id="settingsPanel" class="panel settings-panel" hidden>
+          <h2>設定</h2>
+          <form id="settingsForm" class="settings-form">
+            <label>
+              Vaultパス
+              <input id="vaultPathInput" type="text" />
+            </label>
+            <label>
+              Ollama URL
+              <input id="ollamaUrlInput" type="text" />
+            </label>
+            <label>
+              Ollamaモデル
+              <input id="ollamaModelInput" type="text" />
+            </label>
+            <label>
+              Google Calendar iCal URL
+              <input id="calendarIcsUrlInput" type="text" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" />
+            </label>
+            <label>
+              Google OAuth Client ID
+              <input id="googleClientIdInput" type="text" />
+            </label>
+            <label>
+              Google OAuth Client Secret
+              <input id="googleClientSecretInput" type="password" placeholder="保存済みなら空のままでOK" />
+            </label>
+            <label>
+              Google Calendar ID
+              <input id="googleCalendarIdInput" type="text" placeholder="primary" />
+            </label>
+            <label>
+  Google Tasks 既定List ID
+  <input id="googleTaskListIdInput" type="text" placeholder="空なら自動" />
+</label>
+
+            <button id="googleConnectButton" class="secondary-button" type="button">Googleに接続 / 再接続</button>
+            <p class="settings-note">Google CalendarとGoogle Tasksの両方に使います。承認済みリダイレクトURIに http://127.0.0.1:5177/api/google/oauth/callback を追加してください。</p>            <button class="primary-button" type="submit">保存</button>
+          </form>
+          <p class="settings-note">Google Calendarは非公開iCal URLで表示し、OAuth接続後はGoogle Calendar APIで予定を追加できます。AI連携はlocalhostのOllamaだけを使い、AIにはファイルを書き換えさせません。</p>
+        </section>
+      </main>
+    </div>
+    <script src="/app.js?v=20260708-07" type="module"></script>
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
