@@ -109,7 +109,22 @@ const els = {
   codexPrompt: document.querySelector("#codexPrompt"),
   codexIncludeContext: document.querySelector("#codexIncludeContext"),
   codexSubmit: document.querySelector("#codexSubmit"),
-  codexResult: document.querySelector("#codexResult")
+  codexResult: document.querySelector("#codexResult"),
+  aiDraftForm: document.querySelector("#aiDraftForm"),
+  aiDraftKind: document.querySelector("#aiDraftKind"),
+  aiDraftSource: document.querySelector("#aiDraftSource"),
+  aiDraftSubmit: document.querySelector("#aiDraftSubmit"),
+  aiDraftResult: document.querySelector("#aiDraftResult"),
+  aiDraftHeading: document.querySelector("#aiDraftHeading"),
+  aiDraftToDiaryButton: document.querySelector("#aiDraftToDiaryButton"),
+  aiDraftSaveButton: document.querySelector("#aiDraftSaveButton"),
+  aiderForm: document.querySelector("#aiderForm"),
+  aiderPrompt: document.querySelector("#aiderPrompt"),
+  aiderIncludeContext: document.querySelector("#aiderIncludeContext"),
+  aiderIncludeAppFiles: document.querySelector("#aiderIncludeAppFiles"),
+  aiderSubmit: document.querySelector("#aiderSubmit"),
+  aiderResult: document.querySelector("#aiderResult"),
+  aiderModelLabel: document.querySelector("#aiderModelLabel")
 };
 
 async function api(path, options = {}) {
@@ -935,6 +950,7 @@ function render(data) {
   renderCategoryControls(data);
   if (els.googleCalendarStatus) els.googleCalendarStatus.textContent = data.settings.googleConnected ? "Google接続済み" : "Google未接続";
   els.aiModelLabel.textContent = els.ollamaModelInput.value || "Ollama";
+  if (els.aiderModelLabel) els.aiderModelLabel.textContent = els.ollamaModelInput.value || "Ollama";
   renderCommander(data);
   renderTasks(data.tasks || []);
   renderKanban(data);
@@ -1483,6 +1499,94 @@ els.codexForm?.addEventListener("submit", async (event) => {
     els.codexSubmit.textContent = "Codexに聞く";
   }
 });
+
+els.aiDraftForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const source = els.aiDraftSource?.value.trim() || "";
+  els.aiDraftSubmit.disabled = true;
+  els.aiDraftSubmit.textContent = "作成中...";
+  if (els.aiDraftResult) els.aiDraftResult.value = "Ollamaで下書きを作っています。";
+  try {
+    const result = await api("/api/ai/draft", {
+      method: "POST",
+      body: JSON.stringify({ kind: els.aiDraftKind?.value || "diary", source })
+    });
+    els.aiDraftResult.value = result.draft || "";
+    if (result.heading && els.aiDraftHeading) els.aiDraftHeading.value = result.heading;
+    showMessage(`${result.model || "Ollama"} で下書きを作りました。`);
+  } catch (error) {
+    if (els.aiDraftResult) els.aiDraftResult.value = error.message;
+    showMessage(error.message, "error");
+  } finally {
+    els.aiDraftSubmit.disabled = false;
+    els.aiDraftSubmit.textContent = "下書きを作る";
+  }
+});
+
+els.aiDraftToDiaryButton?.addEventListener("click", () => {
+  const draft = els.aiDraftResult?.value.trim() || "";
+  if (!draft) {
+    showMessage("日記欄へ入れる下書きがありません。", "error");
+    return;
+  }
+  if (els.diaryText) els.diaryText.value = draft;
+  if (els.diaryHeading && els.aiDraftHeading) els.diaryHeading.value = els.aiDraftHeading.value;
+  els.diaryForm?.scrollIntoView({ behavior: "smooth", block: "center" });
+  showMessage("下書きを日記追記欄へ入れました。確認して保存できます。");
+});
+
+els.aiDraftSaveButton?.addEventListener("click", async () => {
+  const draft = els.aiDraftResult?.value.trim() || "";
+  if (!draft) {
+    showMessage("保存する下書きがありません。", "error");
+    return;
+  }
+  els.aiDraftSaveButton.disabled = true;
+  els.aiDraftSaveButton.textContent = "保存中...";
+  try {
+    const result = await api("/api/diary/append", {
+      method: "POST",
+      body: JSON.stringify({ heading: els.aiDraftHeading?.value || "今日のメモ", text: draft })
+    });
+    render(result.state);
+    showMessage(`AI下書きを今日の日記へ保存しました: ${result.diaryRelPath}`);
+  } catch (error) {
+    showMessage(error.message, "error");
+  } finally {
+    els.aiDraftSaveButton.disabled = false;
+    els.aiDraftSaveButton.textContent = "日記へ保存";
+  }
+});
+
+els.aiderForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const prompt = els.aiderPrompt?.value.trim() || "";
+  if (!prompt) {
+    showMessage("Aiderへの相談内容を入力してください。", "error");
+    return;
+  }
+  els.aiderSubmit.disabled = true;
+  els.aiderSubmit.textContent = "Aider確認中...";
+  els.aiderResult.textContent = "AiderをOllamaのaskモードで起動しています。初回は少し時間がかかります。";
+  try {
+    const result = await api("/api/aider/ask", {
+      method: "POST",
+      body: JSON.stringify({
+        prompt,
+        includeContext: Boolean(els.aiderIncludeContext?.checked),
+        includeAppFiles: Boolean(els.aiderIncludeAppFiles?.checked)
+      })
+    });
+    els.aiderResult.textContent = result.response || "Aiderの回答が空でした。";
+    showMessage("Aiderから回答を受け取りました。");
+  } catch (error) {
+    els.aiderResult.textContent = error.message;
+    showMessage(error.message, "error");
+  } finally {
+    els.aiderSubmit.disabled = false;
+    els.aiderSubmit.textContent = "Aiderに聞く";
+  }
+});
 els.settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
@@ -1521,4 +1625,3 @@ document.querySelectorAll(".nav-item").forEach((button) => {
 });
 
 refresh();
-

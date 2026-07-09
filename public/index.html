@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Masa Life Command</title>
-    <link rel="stylesheet" href="/styles.css?v=20260709-kanban" />
+    <link rel="stylesheet" href="/styles.css?v=20260709-ai-aider" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -142,6 +142,59 @@
               </form>
               <div id="codexResult" class="codex-result">まだCodexへの相談はありません。</div>
             </section>
+            <section class="panel ai-writer-panel">
+              <div class="panel-head compact">
+                <h2>AI文章作成</h2>
+                <span class="path-label">Ollama</span>
+              </div>
+              <form id="aiDraftForm" class="form-stack">
+                <label>
+                  種類
+                  <select id="aiDraftKind">
+                    <option value="diary">今日のメモ</option>
+                    <option value="review">夜の秘書レビュー</option>
+                    <option value="study">学習ログ</option>
+                    <option value="inbox">AIインボックス分類</option>
+                  </select>
+                </label>
+                <label>
+                  元メモ
+                  <textarea id="aiDraftSource" rows="4" placeholder="例: 今日はJavaの継承を復習した。少し詰まったけど、親クラスと子クラスの関係は見えてきた"></textarea>
+                </label>
+                <button id="aiDraftSubmit" class="primary-button" type="submit">下書きを作る</button>
+              </form>
+              <label class="draft-preview-label">
+                下書きプレビュー
+                <textarea id="aiDraftResult" rows="7" placeholder="AIで作った下書きがここに出ます"></textarea>
+              </label>
+              <div class="draft-actions">
+                <select id="aiDraftHeading" aria-label="日記保存先">
+                  <option>今日のメモ</option>
+                  <option>AI秘書レビュー</option>
+                  <option>学習ログ</option>
+                  <option>今日の完了</option>
+                </select>
+                <button id="aiDraftToDiaryButton" class="secondary-button" type="button">日記欄へ入れる</button>
+                <button id="aiDraftSaveButton" class="primary-button" type="button">日記へ保存</button>
+              </div>
+            </section>
+
+            <section class="panel aider-panel">
+              <div class="panel-head compact">
+                <h2>Aider</h2>
+                <span id="aiderModelLabel" class="path-label">Ollama</span>
+              </div>
+              <form id="aiderForm" class="form-stack">
+                <label>
+                  相談・実装相談
+                  <textarea id="aiderPrompt" rows="4" placeholder="例: この画面のTODO導線をもっと使いやすくするなら？ / Aider視点で改善案を出して"></textarea>
+                </label>
+                <label class="inline-check"><input id="aiderIncludeContext" type="checkbox" checked /> TODO・予定・今日のログを含める</label>
+                <label class="inline-check"><input id="aiderIncludeAppFiles" type="checkbox" /> アプリ主要ファイルを読み取り専用で含める</label>
+                <button id="aiderSubmit" class="primary-button" type="submit">Aiderに聞く</button>
+              </form>
+              <div id="aiderResult" class="codex-result">まだAiderへの相談はありません。</div>
+            </section>
             <section class="panel">
               <div class="panel-head compact">
                 <h2>予定追加</h2>
@@ -258,6 +311,7 @@
                     <option>今日のメモ</option>
                     <option>今日の完了</option>
                     <option>学習ログ</option>
+                    <option>AI秘書レビュー</option>
                   </select>
                 </label>
                 <label>
@@ -354,7 +408,6 @@
         </section>
       </main>
     </div>
-    <script src="/app.js?v=20260709-kanban" type="module"></script>
+    <script src="/app.js?v=20260709-ai-aider" type="module"></script>
   </body>
 </html>
-

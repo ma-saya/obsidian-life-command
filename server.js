@@ -992,7 +992,7 @@ async function runCodexAsk(settings, question, includeContext = false) {
     const timeout = setTimeout(() => {
       child.kill();
       reject(new Error("Codexの応答がタイムアウトしました。依頼を短くしてもう一度試してください。"));
-    }, 180000);
+    }, 240000);
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
@@ -1022,6 +1022,199 @@ async function runCodexAsk(settings, question, includeContext = false) {
       }
     });
     child.stdin.end(prompt);
+  });
+}
+
+function buildAiDraftPrompt(snapshot, kind, source) {
+  const mode = String(kind || "diary");
+  const headingMap = {
+    diary: "今日のメモ",
+    review: "AI秘書レビュー",
+    study: "学習ログ",
+    inbox: "今日のメモ"
+  };
+  const tasks = compactItems(snapshot.tasks || [], 10).map((task, index) => {
+    const due = task.dueDate ? ` / 期限:${task.dueDate}` : "";
+    return `${index + 1}. ${task.title}${due}`;
+  });
+  const calendar = compactItems(snapshot.calendar?.events || [], 8).map((event, index) => `${index + 1}. ${event.start || ""} ${event.title || "無題"}`);
+  const completions = (snapshot.completionLines || []).slice(-10).join("\n") || "なし";
+  const study = (snapshot.studyLines || []).slice(-10).join("\n") || "なし";
+  const instruction = {
+    diary: "元メモを、今日の日記にそのまま追記しやすい短い箇条書きに整えてください。事実と感想を分け、断定しすぎないでください。",
+    review: "夜の秘書レビューとして、今日の成果、よかった行動、詰まったこと、明日の優先タスク、秘書コメントを短く整理してください。",
+    study: "学習ログとして、学んだこと、詰まったこと、次にやることを短く整理してください。",
+    inbox: "AIインボックス分類として、元メモをTODO、日記、学習メモ、アイデア、後で確認に分類し、保存前確認しやすい形で出してください。"
+  }[mode] || "今日の日記に追記しやすい下書きにしてください。";
+  return {
+    heading: headingMap[mode] || "今日のメモ",
+    prompt: [
+      "あなたはMasa Life CommandのローカルAI秘書です。",
+      "Obsidianへの保存はアプリが行います。あなたはMarkdown断片の下書きだけを作ってください。",
+      "秘密情報や認証情報を推測・要求しないでください。不確かな内容は推測として書いてください。",
+      "出力は日本語。見出しは不要。今日の日記に追記する本文だけを返してください。",
+      "箇条書き中心で、長くしすぎないでください。",
+      "",
+      `今日: ${snapshot.today}`,
+      `保存候補見出し: ${headingMap[mode] || "今日のメモ"}`,
+      "",
+      "指示:",
+      instruction,
+      "",
+      "元メモ:",
+      String(source || "").trim() || "なし",
+      "",
+      "参考: 未完了TODO:",
+      tasks.length ? tasks.join("\n") : "なし",
+      "",
+      "参考: 今日の予定:",
+      calendar.length ? calendar.join("\n") : "なし",
+      "",
+      "参考: 今日の完了ログ:",
+      completions,
+      "",
+      "参考: 今日の学習ログ:",
+      study
+    ].join("\n")
+  };
+}
+
+async function generateAiDraft(settings, payload = {}) {
+  const snapshot = await appState();
+  const ollamaUrl = safeOllamaUrl(settings.ollamaUrl);
+  const model = String(settings.ollamaModel || DEFAULT_SETTINGS.ollamaModel).trim();
+  if (!model) throw new Error("Ollamaモデル名を設定してください。");
+  const { heading, prompt } = buildAiDraftPrompt(snapshot, payload.kind, payload.source);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
+  try {
+    const response = await fetch(`${ollamaUrl}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        prompt,
+        stream: false,
+        options: {
+          temperature: 0.45,
+          num_predict: 900
+        }
+      })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || `Ollama API error: ${response.status}`);
+    return { model, heading, draft: String(body.response || "").trim(), state: snapshot };
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("Ollamaの下書き生成がタイムアウトしました。元メモを短くしてもう一度試してください。");
+    if (String(error.message || "").includes("fetch failed")) throw new Error("Ollamaに接続できません。Ollamaを起動して、設定のOllama URLとモデル名を確認してください。");
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function aiderModelName(settings) {
+  const model = String(settings.ollamaModel || DEFAULT_SETTINGS.ollamaModel).trim();
+  if (!model) throw new Error("Ollamaモデル名を設定してください。");
+  return model.includes("/") ? model : `ollama_chat/${model}`;
+}
+
+function stripAnsi(value) {
+  return String(value || "").replace(/\u001b\[[0-9;]*m/g, "").trim();
+}
+
+function buildAiderPrompt(snapshot, question) {
+  const intro = [
+    "あなたはMasa Life Commandに内蔵されたAiderです。",
+    "この実行はaskモードです。ファイル編集はせず、日本語で実装相談・改善案・Obsidian運用案を返してください。",
+    "Obsidianの正本はMarkdownで、AIは保存先や差分を提案し、実際の保存はアプリが行います。",
+    "回答は具体的に、次に押すボタンや変更対象がわかる粒度にしてください。"
+  ];
+  if (!snapshot) return [...intro, "", "ユーザーの依頼:", String(question || "").trim()].join("\n");
+  const tasks = compactItems(snapshot.tasks || [], 12).map((task, index) => `${index + 1}. ${task.title}${task.dueDate ? ` / 期限:${task.dueDate}` : ""}`);
+  const calendar = compactItems(snapshot.calendar?.events || [], 8).map((event, index) => `${index + 1}. ${event.start || ""} ${event.title || "無題"}`);
+  return [
+    ...intro,
+    "",
+    `今日: ${snapshot.today}`,
+    `日記: ${snapshot.diaryRelPath}`,
+    "",
+    "未完了TODO:",
+    tasks.length ? tasks.join("\n") : "なし",
+    "",
+    "今日の予定:",
+    calendar.length ? calendar.join("\n") : "なし",
+    "",
+    "今日の完了:",
+    (snapshot.completionLines || []).slice(-8).join("\n") || "なし",
+    "",
+    "学習ログ:",
+    (snapshot.studyLines || []).slice(-8).join("\n") || "なし",
+    "",
+    "ユーザーの依頼:",
+    String(question || "").trim()
+  ].join("\n");
+}
+
+async function runAiderAsk(settings, payload = {}) {
+  const promptText = String(payload.prompt || "").trim();
+  if (!promptText) throw new Error("Aiderへの相談内容を入力してください。");
+  const snapshot = payload.includeContext ? await appState() : null;
+  const args = [
+    "--model", aiderModelName(settings),
+    "--chat-mode", "ask",
+    "--no-git",
+    "--no-gitignore",
+    "--no-auto-commits",
+    "--no-pretty",
+    "--no-stream",
+    "--no-analytics",
+    "--no-detect-urls"
+  ];
+  if (payload.includeAppFiles) {
+    args.push("--read", path.join(__dirname, "server.js"));
+    args.push("--read", path.join(PUBLIC_DIR, "app.js"));
+    args.push("--read", path.join(PUBLIC_DIR, "index.html"));
+    args.push("--read", path.join(PUBLIC_DIR, "styles.css"));
+  }
+  args.push("--message", buildAiderPrompt(snapshot, promptText));
+
+  return await new Promise((resolve, reject) => {
+    const child = spawn("aider", args, {
+      cwd: __dirname,
+      windowsHide: true,
+      shell: process.platform === "win32",
+      env: { ...process.env, NO_COLOR: "1", AIDER_ANALYTICS: "false" }
+    });
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error("Aiderの応答がタイムアウトしました。依頼を短くしてもう一度試してください。"));
+    }, 240000);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+      if (stdout.length > 60000) stdout = stdout.slice(-60000);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+      if (stderr.length > 20000) stderr = stderr.slice(-20000);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(new Error(`Aiderを起動できませんでした: ${error.message}`));
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      const cleanStdout = stripAnsi(stdout);
+      const cleanStderr = stripAnsi(stderr);
+      if (code !== 0) {
+        reject(new Error((cleanStderr || cleanStdout || "Aiderがエラーで終了しました。").slice(0, 1200)));
+        return;
+      }
+      resolve({ model: aiderModelName(settings), response: cleanStdout || cleanStderr, state: snapshot });
+    });
   });
 }
 function normalizeCalendarUrl(rawUrl) {
@@ -1496,6 +1689,20 @@ async function handleApi(req, res, url) {
       return sendJson(res, 200, result);
     }
 
+
+    if (req.method === "POST" && url.pathname === "/api/ai/draft") {
+      const settings = await loadSettings();
+      const body = await parseJsonBody(req);
+      const result = await generateAiDraft(settings, body);
+      return sendJson(res, 200, result);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/aider/ask") {
+      const settings = await loadSettings();
+      const body = await parseJsonBody(req);
+      const result = await runAiderAsk(settings, body);
+      return sendJson(res, 200, result);
+    }
     if (req.method === "POST" && url.pathname === "/api/ai/priority") {
       const settings = await loadSettings();
       const result = await askOllamaForPriority(settings);
@@ -1534,4 +1741,3 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Masa Life Command is running at http://localhost:${PORT}`);
 });
-

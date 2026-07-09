@@ -1397,3 +1397,37 @@ button:disabled {
     grid-template-columns: repeat(4, minmax(240px, 78vw));
   }
 }
+
+.ai-writer-panel textarea,
+.aider-panel textarea {
+  resize: vertical;
+}
+
+.draft-preview-label {
+  margin-top: 12px;
+}
+
+.draft-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.draft-actions .primary-button,
+.draft-actions .secondary-button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.aider-panel .codex-result {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+@media (max-width: 720px) {
+  .draft-actions {
+    grid-template-columns: 1fr;
+  }
+}
