@@ -23,6 +23,8 @@ const DEFAULT_SETTINGS = {
   vaultPath: "",
   ollamaUrl: "http://localhost:11434",
   ollamaModel: "qwen3:14b",
+  aiderAskModel: "qwen3:14b",
+  aiderWriteModel: "qwen3-coder:latest",
   calendarIcsUrl: "",
   googleClientId: "",
   googleClientSecret: "",
@@ -1114,8 +1116,10 @@ async function generateAiDraft(settings, payload = {}) {
   }
 }
 
-function aiderModelName(settings) {
-  const model = String(settings.ollamaModel || DEFAULT_SETTINGS.ollamaModel).trim();
+function aiderModelName(settings, mode = "ask") {
+  const configured = mode === "write" ? settings.aiderWriteModel : settings.aiderAskModel;
+  const fallback = mode === "write" ? DEFAULT_SETTINGS.aiderWriteModel : (settings.ollamaModel || DEFAULT_SETTINGS.ollamaModel);
+  const model = String(configured || fallback).trim();
   if (!model) throw new Error("Ollamaモデル名を設定してください。");
   return model.includes("/") ? model : `ollama_chat/${model}`;
 }
@@ -1124,11 +1128,13 @@ function stripAnsi(value) {
   return String(value || "").replace(/\u001b\[[0-9;]*m/g, "").trim();
 }
 
-function buildAiderPrompt(snapshot, question) {
+function buildAiderPrompt(snapshot, question, mode = "ask") {
   const intro = [
     "あなたはMasa Life Commandに内蔵されたAiderです。",
-    "この実行はaskモードです。ファイル編集はせず、日本語で実装相談・改善案・Obsidian運用案を返してください。",
-    "Obsidianの正本はMarkdownで、AIは保存先や差分を提案し、実際の保存はアプリが行います。",
+    mode === "write"
+      ? "この実行は入力・保存/編集モードです。qwen code系モデルとして、依頼されたMarkdown・コード・入力文をそのまま使える完成形で作成してください。"
+      : "この実行は質問モードです。ファイル編集はせず、日本語で実装相談・改善案・Obsidian運用案を返してください。",
+    "Obsidianの正本はMarkdownです。保存先や変更内容を明示し、アプリ側で保存する場合は貼り付け可能な本文を返してください。",
     "回答は具体的に、次に押すボタンや変更対象がわかる粒度にしてください。"
   ];
   if (!snapshot) return [...intro, "", "ユーザーの依頼:", String(question || "").trim()].join("\n");
@@ -1160,15 +1166,17 @@ function buildAiderPrompt(snapshot, question) {
 async function runAiderAsk(settings, payload = {}) {
   const promptText = String(payload.prompt || "").trim();
   if (!promptText) throw new Error("Aiderへの相談内容を入力してください。");
+  const mode = payload.mode === "write" ? "write" : "ask";
   const snapshot = payload.includeContext ? await appState() : null;
   const args = [
-    "--model", aiderModelName(settings),
-    "--chat-mode", "ask",
+    "--model", aiderModelName(settings, mode),
+    "--chat-mode", mode === "write" ? "architect" : "ask",
     "--no-git",
     "--no-gitignore",
     "--no-auto-commits",
     "--no-pretty",
     "--no-stream",
+    "--timeout", "180",
     "--no-analytics",
     "--no-detect-urls"
   ];
@@ -1178,13 +1186,16 @@ async function runAiderAsk(settings, payload = {}) {
     args.push("--read", path.join(PUBLIC_DIR, "index.html"));
     args.push("--read", path.join(PUBLIC_DIR, "styles.css"));
   }
-  args.push("--message", buildAiderPrompt(snapshot, promptText));
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  const promptPath = path.join(DATA_DIR, `aider-prompt-${Date.now()}.txt`);
+  await fs.writeFile(promptPath, buildAiderPrompt(snapshot, promptText, mode), "utf8");
+  args.push("--message-file", promptPath);
 
   return await new Promise((resolve, reject) => {
     const child = spawn("aider", args, {
       cwd: __dirname,
       windowsHide: true,
-      shell: process.platform === "win32",
+      shell: false,
       env: { ...process.env, NO_COLOR: "1", AIDER_ANALYTICS: "false" }
     });
     let stdout = "";
@@ -1201,19 +1212,21 @@ async function runAiderAsk(settings, payload = {}) {
       stderr += chunk.toString();
       if (stderr.length > 20000) stderr = stderr.slice(-20000);
     });
-    child.on("error", (error) => {
+    child.on("error", async (error) => {
       clearTimeout(timeout);
+      await fs.unlink(promptPath).catch(() => {});
       reject(new Error(`Aiderを起動できませんでした: ${error.message}`));
     });
-    child.on("close", (code) => {
+    child.on("close", async (code) => {
       clearTimeout(timeout);
+      await fs.unlink(promptPath).catch(() => {});
       const cleanStdout = stripAnsi(stdout);
       const cleanStderr = stripAnsi(stderr);
       if (code !== 0) {
         reject(new Error((cleanStderr || cleanStdout || "Aiderがエラーで終了しました。").slice(0, 1200)));
         return;
       }
-      resolve({ model: aiderModelName(settings), response: cleanStdout || cleanStderr, state: snapshot });
+      resolve({ model: aiderModelName(settings, mode), mode, response: cleanStdout || cleanStderr, state: snapshot });
     });
   });
 }
@@ -1574,6 +1587,8 @@ async function handleApi(req, res, url) {
         vaultPath,
         ollamaUrl: safeOllamaUrl(String(body.ollamaUrl || DEFAULT_SETTINGS.ollamaUrl).trim()),
         ollamaModel: String(body.ollamaModel || DEFAULT_SETTINGS.ollamaModel).trim(),
+        aiderAskModel: String(body.aiderAskModel || DEFAULT_SETTINGS.aiderAskModel).trim(),
+        aiderWriteModel: String(body.aiderWriteModel || DEFAULT_SETTINGS.aiderWriteModel).trim(),
         calendarIcsUrl: normalizeCalendarUrl(String(body.calendarIcsUrl || "").trim()),
         googleClientId: String(body.googleClientId || "").trim(),
         googleClientSecret: String(body.googleClientSecret || current.googleClientSecret || "").trim(),

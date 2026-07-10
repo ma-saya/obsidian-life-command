@@ -86,6 +86,8 @@ const els = {
   vaultPathInput: document.querySelector("#vaultPathInput"),
   ollamaUrlInput: document.querySelector("#ollamaUrlInput"),
   ollamaModelInput: document.querySelector("#ollamaModelInput"),
+  aiderAskModelInput: document.querySelector("#aiderAskModelInput"),
+  aiderWriteModelInput: document.querySelector("#aiderWriteModelInput"),
   calendarIcsUrlInput: document.querySelector("#calendarIcsUrlInput"),
   googleClientIdInput: document.querySelector("#googleClientIdInput"),
   googleClientSecretInput: document.querySelector("#googleClientSecretInput"),
@@ -119,6 +121,7 @@ const els = {
   aiDraftToDiaryButton: document.querySelector("#aiDraftToDiaryButton"),
   aiDraftSaveButton: document.querySelector("#aiDraftSaveButton"),
   aiderForm: document.querySelector("#aiderForm"),
+  aiderMode: document.querySelector("#aiderMode"),
   aiderPrompt: document.querySelector("#aiderPrompt"),
   aiderIncludeContext: document.querySelector("#aiderIncludeContext"),
   aiderIncludeAppFiles: document.querySelector("#aiderIncludeAppFiles"),
@@ -430,6 +433,8 @@ function configPayload() {
     vaultPath: els.vaultPathInput.value,
     ollamaUrl: els.ollamaUrlInput.value,
     ollamaModel: els.ollamaModelInput.value,
+    aiderAskModel: els.aiderAskModelInput?.value || "",
+    aiderWriteModel: els.aiderWriteModelInput?.value || "",
     calendarIcsUrl: els.calendarIcsUrlInput.value,
     googleClientId: els.googleClientIdInput?.value || "",
     googleClientSecret: els.googleClientSecretInput?.value || "",
@@ -942,6 +947,8 @@ function render(data) {
   els.vaultPathInput.value = data.settings.vaultPath;
   els.ollamaUrlInput.value = data.settings.ollamaUrl || els.ollamaUrlInput.value || "http://localhost:11434";
   els.ollamaModelInput.value = data.settings.ollamaModel || els.ollamaModelInput.value || "qwen3:14b";
+  if (els.aiderAskModelInput) els.aiderAskModelInput.value = data.settings.aiderAskModel || els.ollamaModelInput.value || "qwen3:14b";
+  if (els.aiderWriteModelInput) els.aiderWriteModelInput.value = data.settings.aiderWriteModel || "qwen3-coder:latest";
   els.calendarIcsUrlInput.value = data.settings.calendarIcsUrl || "";
   if (els.googleClientIdInput) els.googleClientIdInput.value = data.settings.googleClientId || "";
   if (els.googleCalendarIdInput) els.googleCalendarIdInput.value = data.settings.googleCalendarId || "primary";
@@ -950,7 +957,7 @@ function render(data) {
   renderCategoryControls(data);
   if (els.googleCalendarStatus) els.googleCalendarStatus.textContent = data.settings.googleConnected ? "Google接続済み" : "Google未接続";
   els.aiModelLabel.textContent = els.ollamaModelInput.value || "Ollama";
-  if (els.aiderModelLabel) els.aiderModelLabel.textContent = els.ollamaModelInput.value || "Ollama";
+  if (els.aiderModelLabel) els.aiderModelLabel.textContent = `質問: ${els.aiderAskModelInput?.value || "Ollama"} / 入力: ${els.aiderWriteModelInput?.value || "qwen code"}`;
   renderCommander(data);
   renderTasks(data.tasks || []);
   renderKanban(data);
@@ -1254,6 +1261,10 @@ els.googleConnectButton.addEventListener("click", async () => {
         vaultPath: els.vaultPathInput.value,
         ollamaUrl: els.ollamaUrlInput.value,
         ollamaModel: els.ollamaModelInput.value,
+        aiderAskModel: els.aiderAskModelInput?.value || "",
+        aiderWriteModel: els.aiderWriteModelInput?.value || "",
+    aiderAskModel: els.aiderAskModelInput?.value || "",
+    aiderWriteModel: els.aiderWriteModelInput?.value || "",
         calendarIcsUrl: els.calendarIcsUrlInput.value,
         googleClientId: els.googleClientIdInput?.value || "",
         googleClientSecret: els.googleClientSecretInput?.value || "",
@@ -1567,12 +1578,16 @@ els.aiderForm?.addEventListener("submit", async (event) => {
   }
   els.aiderSubmit.disabled = true;
   els.aiderSubmit.textContent = "Aider確認中...";
-  els.aiderResult.textContent = "AiderをOllamaのaskモードで起動しています。初回は少し時間がかかります。";
+  const mode = els.aiderMode?.value === "write" ? "write" : "ask";
+  els.aiderResult.textContent = mode === "write"
+    ? "qwen code系モデルで入力・保存/編集案を作成しています。初回は少し時間がかかります。"
+    : "Gemma/Qwen系モデルで質問に回答しています。初回は少し時間がかかります。";
   try {
     const result = await api("/api/aider/ask", {
       method: "POST",
       body: JSON.stringify({
         prompt,
+        mode,
         includeContext: Boolean(els.aiderIncludeContext?.checked),
         includeAppFiles: Boolean(els.aiderIncludeAppFiles?.checked)
       })
@@ -1596,6 +1611,10 @@ els.settingsForm.addEventListener("submit", async (event) => {
         vaultPath: els.vaultPathInput.value,
         ollamaUrl: els.ollamaUrlInput.value,
         ollamaModel: els.ollamaModelInput.value,
+        aiderAskModel: els.aiderAskModelInput?.value || "",
+        aiderWriteModel: els.aiderWriteModelInput?.value || "",
+    aiderAskModel: els.aiderAskModelInput?.value || "",
+    aiderWriteModel: els.aiderWriteModelInput?.value || "",
         calendarIcsUrl: els.calendarIcsUrlInput.value,
         googleClientId: els.googleClientIdInput?.value || "",
         googleClientSecret: els.googleClientSecretInput?.value || "",

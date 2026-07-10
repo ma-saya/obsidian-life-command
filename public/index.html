@@ -182,11 +182,18 @@
             <section class="panel aider-panel">
               <div class="panel-head compact">
                 <h2>Aider</h2>
-                <span id="aiderModelLabel" class="path-label">Ollama</span>
+                <span id="aiderModelLabel" class="path-label">質問: Ollama</span>
               </div>
               <form id="aiderForm" class="form-stack">
                 <label>
-                  相談・実装相談
+                  モード
+                  <select id="aiderMode">
+                    <option value="ask">質問・相談</option>
+                    <option value="write">入力・保存/編集</option>
+                  </select>
+                </label>
+                <label>
+                  質問・依頼
                   <textarea id="aiderPrompt" rows="4" placeholder="例: この画面のTODO導線をもっと使いやすくするなら？ / Aider視点で改善案を出して"></textarea>
                 </label>
                 <label class="inline-check"><input id="aiderIncludeContext" type="checkbox" checked /> TODO・予定・今日のログを含める</label>
@@ -379,6 +386,14 @@
             <label>
               Ollamaモデル
               <input id="ollamaModelInput" type="text" />
+            </label>
+            <label>
+              Aider質問モデル（Gemma / Qwen）
+              <input id="aiderAskModelInput" type="text" placeholder="例: qwen3:14b または gemma3:12b" />
+            </label>
+            <label>
+              Aider入力・保存/編集モデル（qwen code）
+              <input id="aiderWriteModelInput" type="text" placeholder="例: qwen3-coder:latest" />
             </label>
             <label>
               Google Calendar iCal URL

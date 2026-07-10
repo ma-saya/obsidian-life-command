@@ -2,6 +2,8 @@
   "vaultPath": "C:\\path\\to\\your\\ObsidianVault",
   "ollamaUrl": "http://localhost:11434",
   "ollamaModel": "qwen3:14b",
+  "aiderAskModel": "qwen3:14b",
+  "aiderWriteModel": "qwen3-coder:latest",
   "calendarIcsUrl": "",
   "googleClientId": "",
   "googleClientSecret": "",
