@@ -100,13 +100,24 @@
               </div>
               <button id="todoRefresh" class="secondary-button" type="button">更新</button>
             </div>
-            <div id="todoCategoryTabs" class="todo-category-tabs" aria-label="TODOカテゴリー">
-              <button class="todo-category-tab active" type="button" data-todo-category="normal">通常</button>
-              <button class="todo-category-tab" type="button" data-todo-category="reading">読書</button>
-              <button class="todo-category-tab" type="button" data-todo-category="google">Google</button>
-              <button class="todo-category-tab" type="button" data-todo-category="all">全部</button>
-            </div>
-            <div id="todoList" class="todo-list"></div>
+            <div class="todo-filters">
+  <input id="todoSearchInput" type="search" placeholder="TODOを検索" aria-label="TODOを検索" />
+  <select id="todoFilterInput" aria-label="TODOを絞り込み">
+    <option value="all">すべて</option>
+    <option value="today">今日・期限切れ</option>
+    <option value="overdue">期限切れ</option>
+    <option value="no-due">期限なし</option>
+    <option value="obsidian">Obsidian</option>
+    <option value="google">Google Tasks</option>
+  </select>
+</div>
+<div id="todoCategoryTabs" class="todo-category-tabs" aria-label="TODOカテゴリー">
+  <button class="todo-category-tab active" type="button" data-todo-category="normal">通常</button>
+  <button class="todo-category-tab" type="button" data-todo-category="reading">読書</button>
+  <button class="todo-category-tab" type="button" data-todo-category="google">Google</button>
+  <button class="todo-category-tab" type="button" data-todo-category="all">全部</button>
+</div>
+<div id="todoList" class="todo-list"></div>
             <div id="calendarTimelineHost" class="calendar-timeline-host"></div>
           </div>
 
@@ -282,9 +293,18 @@
                   <select id="todoKindInput"></select>
                 </label>
                 <label>
-                  期限
-                  <input id="todoDueInput" type="date" />
-                </label>
+  期限
+  <input id="todoDueInput" type="date" />
+</label>
+<label>
+  繰り返し
+  <select id="todoRepeatInput">
+    <option value="">なし</option>
+    <option value="daily">毎日</option>
+    <option value="weekly">毎週</option>
+    <option value="monthly">毎月</option>
+  </select>
+</label>
                 <button class="primary-button" type="submit">TODOを追加</button>
               </form>
               <div class="category-settings compact-category-settings">

@@ -1,6 +1,9 @@
 const state = {
   data: null,
   todoCategory: "normal",
+  todoQuery: "",
+  todoFilter: "all",
+  kanbanDragTaskId: "",
   googleTasksExpanded: false,
   categoriesExpanded: false,
   calendarExpanded: false,
@@ -33,6 +36,8 @@ const els = {
   todoSummary: document.querySelector("#todoSummary"),
   todoList: document.querySelector("#todoList"),
   todoCategoryTabs: document.querySelector("#todoCategoryTabs"),
+  todoSearchInput: document.querySelector("#todoSearchInput"),
+  todoFilterInput: document.querySelector("#todoFilterInput"),
   kanbanPanel: document.querySelector("#kanbanPanel"),
   kanbanSummary: document.querySelector("#kanbanSummary"),
   kanbanBoard: document.querySelector("#kanbanBoard"),
@@ -71,6 +76,7 @@ const els = {
   todoTitleInput: document.querySelector("#todoTitleInput"),
   todoDueInput: document.querySelector("#todoDueInput"),
   todoKindInput: document.querySelector("#todoKindInput"),
+  todoRepeatInput: document.querySelector("#todoRepeatInput"),
   diaryForm: document.querySelector("#diaryForm"),
   diaryHeading: document.querySelector("#diaryHeading"),
   diaryText: document.querySelector("#diaryText"),
@@ -582,7 +588,7 @@ function renderKanbanCard(task) {
     ? `<button class="secondary-button complete-google-task" type="button" data-google-task-id="${escapeHtml(task.googleTaskId)}" data-google-task-list-id="${escapeHtml(task.taskListId || "")}">完了</button>`
     : `<button class="secondary-button complete-task" type="button">完了</button>`;
   return `
-    <article class="kanban-card todo-row" data-id="${escapeHtml(task.id)}">
+    <article class="kanban-card todo-row" draggable="true" data-id="${escapeHtml(task.id)}">
       <div class="todo-check">✓</div>
       <div>
         <div class="todo-title">${escapeHtml(task.title)}</div>
@@ -657,10 +663,19 @@ function renderTasks(tasks) {
     return { ...task, category: categoryIds.has(category) ? category : "normal" };
   });
   const allTasks = [...obsidianTasks, ...googleOnlyTasks];
-  const totalCount = allTasks.length;
+  const query = state.todoQuery.toLowerCase();
+  const today = state.data?.today || "";
+  const visibleTasks = allTasks.filter((task) => {
+    const text = `${task.title} ${task.category} ${task.taskListTitle || ""}`.toLowerCase();
+    const matchesQuery = !query || text.includes(query);
+    const matchesCategory = state.todoCategory === "all" || task.category === state.todoCategory;
+    const matchesFilter = state.todoFilter === "all" || (state.todoFilter === "today" && (!task.dueDate || task.dueDate <= today)) || (state.todoFilter === "overdue" && task.dueDate && task.dueDate < today) || (state.todoFilter === "no-due" && !task.dueDate) || (state.todoFilter === "google" && task.source === "google") || (state.todoFilter === "obsidian" && task.source !== "google");
+    return matchesQuery && matchesCategory && matchesFilter;
+  });
+  const totalCount = visibleTasks.length;
   const categoryGroups = categories.map((category) => ({
     ...category,
-    tasks: allTasks.filter((task) => task.category === category.id),
+    tasks: visibleTasks.filter((task) => task.category === category.id),
     empty: `${category.name}はありません。`
   }));
   els.todoSummary.textContent = `${totalCount}件 / ${categories.length}カテゴリ`;
@@ -1145,6 +1160,15 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+els.todoSearchInput?.addEventListener("input", (event) => {
+  state.todoQuery = event.target.value.trim();
+  renderTasks(state.data?.tasks || []);
+});
+els.todoFilterInput?.addEventListener("change", (event) => {
+  state.todoFilter = event.target.value;
+  renderTasks(state.data?.tasks || []);
+});
+
 els.todoCategoryTabs?.addEventListener("click", (event) => {
   const button = event.target.closest(".todo-category-tab");
   if (!button) return;
@@ -1384,11 +1408,13 @@ els.todoAddForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         title,
         dueDate: els.todoDueInput.value,
-        kind: els.todoKindInput.value
+        kind: els.todoKindInput.value,
+        repeatRule: els.todoRepeatInput?.value || ""
       })
     });
     els.todoTitleInput.value = "";
     els.todoDueInput.value = "";
+    if (els.todoRepeatInput) els.todoRepeatInput.value = "";
     els.todoKindInput.value = getTodoCategories().find((category) => category.id !== "google")?.id || "normal";
     render(result.state);
     if (result.googleTaskError) {
@@ -1600,6 +1626,43 @@ els.aiderForm?.addEventListener("submit", async (event) => {
   } finally {
     els.aiderSubmit.disabled = false;
     els.aiderSubmit.textContent = "Aiderに聞く";
+  }
+});
+
+els.kanbanBoard?.addEventListener("dragstart", (event) => {
+  const card = event.target.closest(".kanban-card");
+  if (!card) return;
+  state.kanbanDragTaskId = card.dataset.id || "";
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", state.kanbanDragTaskId);
+  card.classList.add("is-dragging");
+});
+els.kanbanBoard?.addEventListener("dragend", (event) => {
+  event.target.closest(".kanban-card")?.classList.remove("is-dragging");
+  state.kanbanDragTaskId = "";
+});
+els.kanbanBoard?.addEventListener("dragover", (event) => {
+  const column = event.target.closest(".kanban-column");
+  if (!column) return;
+  event.preventDefault();
+  column.classList.add("is-drag-over");
+});
+els.kanbanBoard?.addEventListener("dragleave", (event) => {
+  event.target.closest(".kanban-column")?.classList.remove("is-drag-over");
+});
+els.kanbanBoard?.addEventListener("drop", async (event) => {
+  const column = event.target.closest(".kanban-column");
+  if (!column) return;
+  event.preventDefault();
+  column.classList.remove("is-drag-over");
+  const taskId = event.dataTransfer.getData("text/plain") || state.kanbanDragTaskId;
+  if (!taskId) return;
+  try {
+    const result = await api("/api/kanban/move", { method: "POST", body: JSON.stringify({ taskId, status: column.dataset.kanbanColumn }) });
+    render(result.state);
+    showMessage("Kanbanを移動しました。");
+  } catch (error) {
+    showMessage(error.message, "error");
   }
 });
 els.settingsForm.addEventListener("submit", async (event) => {

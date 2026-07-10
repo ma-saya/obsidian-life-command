@@ -572,6 +572,11 @@ function trimTaskText(rawTask) {
   return rawTask
     .replace(/^\s*-\s\[[ xX]\]\s*/, "")
     .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/g, "")
+    .replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/g, "")
+    .replace(/\s*#task\b/g, "")
+    .replace(/\s*#reading-action\b/g, "")
+    .replace(/\s*#mlc\/category\/[A-Za-z0-9_-]+/g, "")
+    .replace(/\s*🔁\s*(daily|weekly|monthly)/gi, "")
     .trim();
 }
 
@@ -589,6 +594,7 @@ function parseTaskLine(line, fileRel, lineIndex, mtimeMs) {
     raw,
     indent,
     title: trimTaskText(raw),
+    repeatRule: body.match(/🔁\s*(daily|weekly|monthly)/i)?.[1]?.toLowerCase() || "",
     dueDate: dueMatch?.[1] || null,
     doneDate: doneMatch?.[1] || null,
     completed: status.toLowerCase() === "x",
@@ -656,6 +662,15 @@ function appendUnderHeading(content, heading, entryLines) {
   return lines.join("\n").replace(/\n{4,}/g, "\n\n\n");
 }
 
+function nextRecurringDate(dateValue, rule) {
+  const base = dateValue ? new Date(`${dateValue}T00:00:00Z`) : new Date(`${todayParts().isoDate}T00:00:00Z`);
+  if (Number.isNaN(base.valueOf())) return "";
+  if (rule === "daily") base.setUTCDate(base.getUTCDate() + 1);
+  if (rule === "weekly") base.setUTCDate(base.getUTCDate() + 7);
+  if (rule === "monthly") base.setUTCMonth(base.getUTCMonth() + 1);
+  return base.toISOString().slice(0, 10);
+}
+
 async function appendToDailyDiary(vaultPath, heading, entryLines) {
   const diary = await ensureDailyDiary(vaultPath);
   const content = await fs.readFile(diary.filePath, "utf8");
@@ -670,6 +685,8 @@ async function addTask(settings, payload) {
   if (/\r|\n/.test(title)) throw new Error("TODO本文は1行で入力してください。");
 
   const dueDate = String(payload.dueDate || "").trim();
+  const repeatRule = String(payload.repeatRule || "").trim().toLowerCase();
+  if (repeatRule && !["daily", "weekly", "monthly"].includes(repeatRule)) throw new Error("繰り返しは毎日・毎週・毎月から選択してください。");
   if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
     throw new Error("期限は YYYY-MM-DD 形式で入力してください。");
   }
@@ -691,7 +708,8 @@ async function addTask(settings, payload) {
   const datePart = dueDate ? ` 📅 ${dueDate}` : "";
   const readingTag = kind === "reading" && !title.includes("#reading-action") ? " #reading-action" : "";
   const categoryTag = !["normal", "reading"].includes(kind) ? ` #mlc/category/${kind}` : "";
-  const taskLine = `- [ ] ${title}${datePart} #task${readingTag}${categoryTag}`;
+  const repeatPart = repeatRule ? ` 🔁 ${repeatRule}` : "";
+  const taskLine = `- [ ] ${title}${datePart}${repeatPart} #task${readingTag}${categoryTag}`;
   const prefix = current.endsWith("\n") ? current : `${current}\n`;
   const lineIndex = prefix.replace(/\r\n/g, "\n").split("\n").length - 1;
   await fs.writeFile(filePath, `${prefix}${taskLine}\n`, "utf8");
@@ -766,7 +784,17 @@ async function completeTask(settings, payload) {
   await fs.writeFile(filePath, lines.join("\n"), "utf8");
 
   const title = trimTaskText(after);
+  const repeatRule = String(payload.repeatRule || "").trim().toLowerCase();
   const linkedGoogleTask = await completeLinkedGoogleTask(settings, { ...payload, lineIndex }, title);
+  let recurringTask = null;
+  if (repeatRule && ["daily", "weekly", "monthly"].includes(repeatRule)) {
+    const nextDue = nextRecurringDate(payload.dueDate || null, repeatRule);
+    const categoryTag = payload.category && !["normal", "reading"].includes(payload.category) ? ` #mlc/category/${payload.category}` : "";
+    const nextLine = `- [ ] ${title}${nextDue ? ` 📅 ${nextDue}` : ""} 🔁 ${repeatRule} #task${categoryTag}`;
+    lines.splice(lineIndex + 1, 0, nextLine);
+    await fs.writeFile(filePath, lines.join("\\n"), "utf8");
+    recurringTask = { title, dueDate: nextDue, repeatRule };
+  }
   const diaryLines = [
     `- ${timeLabel()} 完了: ${title}`,
     `  - 出典: ${payload.fileRel}:${lineIndex + 1}`
@@ -780,7 +808,8 @@ async function completeTask(settings, payload) {
       title,
       lineIndex,
       previousMtimeMs: payload.mtimeMs,
-      currentMtimeMs: stat.mtimeMs
+      currentMtimeMs: stat.mtimeMs,
+      recurringTask
     }
   };
 }
