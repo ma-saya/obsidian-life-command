@@ -206,7 +206,8 @@ h2 {
 }
 
 .main-panel {
-  min-height: 586px;
+  min-height: 0;
+  align-self: start;
 }
 
 .panel-head {
