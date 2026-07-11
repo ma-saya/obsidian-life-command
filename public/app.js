@@ -4,6 +4,7 @@ const state = {
   todoQuery: "",
   todoFilter: "all",
   kanbanDragTaskId: "",
+  selectedTaskId: "",
   googleTasksExpanded: false,
   categoriesExpanded: false,
   calendarExpanded: false,
@@ -38,6 +39,16 @@ const els = {
   todoCategoryTabs: document.querySelector("#todoCategoryTabs"),
   todoSearchInput: document.querySelector("#todoSearchInput"),
   todoFilterInput: document.querySelector("#todoFilterInput"),
+  todayPlan: document.querySelector("#todayPlan"),
+  notificationButton: document.querySelector("#notificationButton"),
+  weeklyReview: document.querySelector("#weeklyReview"),
+  statistics: document.querySelector("#statistics"),
+  taskDetailForm: document.querySelector("#taskDetailForm"),
+  taskDetailTitle: document.querySelector("#taskDetailTitle"),
+  taskPriorityInput: document.querySelector("#taskPriorityInput"),
+  taskEstimateInput: document.querySelector("#taskEstimateInput"),
+  taskNoteInput: document.querySelector("#taskNoteInput"),
+  taskDetailSave: document.querySelector("#taskDetailSave"),
   kanbanPanel: document.querySelector("#kanbanPanel"),
   kanbanSummary: document.querySelector("#kanbanSummary"),
   kanbanBoard: document.querySelector("#kanbanBoard"),
@@ -497,6 +508,8 @@ function renderTaskGroup(title, tasks, emptyText) {
   const rows = tasks
     .map((task) => {
       const due = task.dueDate ? `<span class="chip">📅 ${escapeHtml(task.dueDate)}</span>` : "";
+       const detail = state.data?.taskDetails?.[task.id] || {};
+       const detailChip = detail.estimateMinutes ? `<span class="chip">⏱ ${escapeHtml(String(detail.estimateMinutes))}分</span>` : "";
       const isGoogleTask = task.source === "google";
       const categoryChip = `<span class="chip">${escapeHtml(categoryName(task.category || categoryIdFromTask(task)))}</span>`;
       const listChip = isGoogleTask && task.taskListTitle ? `<span class="chip">${escapeHtml(task.taskListTitle)}</span>` : "";
@@ -504,8 +517,8 @@ function renderTaskGroup(title, tasks, emptyText) {
       const actions = isGoogleTask
         ? `<button class="secondary-button complete-google-task" type="button" data-google-task-id="${escapeHtml(task.googleTaskId)}" data-google-task-list-id="${escapeHtml(task.taskListId || "")}">完了</button>`
         : `<button class="secondary-button send-google-task" type="button">Googleへ送る</button>
-            <button class="secondary-button complete-task" type="button">完了</button>`;
-      return `
+            <button class="secondary-button task-detail-button" type="button" data-task-id="${escapeHtml(task.id)}">詳細</button>
+            <button class="secondary-button complete-task" type="button">完了</button>`;      return `
         <article class="todo-row" data-id="${task.id}">
           <div class="todo-check">✓</div>
           <div>
@@ -571,6 +584,8 @@ function kanbanStatus(task) {
 
 function kanbanTaskMeta(task) {
   const due = task.dueDate ? `<span class="chip">📅 ${escapeHtml(task.dueDate)}</span>` : "";
+       const detail = state.data?.taskDetails?.[task.id] || {};
+       const detailChip = detail.estimateMinutes ? `<span class="chip">⏱ ${escapeHtml(String(detail.estimateMinutes))}分</span>` : "";
   const category = `<span class="chip">${escapeHtml(categoryName(task.category || categoryIdFromTask(task)))}</span>`;
   const source = task.source === "google"
     ? `<span>${escapeHtml(task.taskListTitle ? `Google Tasks / ${task.taskListTitle}` : "Google Tasks")}</span>`
@@ -622,6 +637,46 @@ function renderKanban(data) {
       </section>
     `;
   }).join("");
+}
+function priorityScore(task) {
+  const priority = state.data?.taskDetails?.[task.id]?.priority || "medium";
+  return { high: 0, medium: 1, low: 2 }[priority] ?? 1;
+}
+
+function renderTodayPlan(data) {
+  if (!els.todayPlan) return;
+  const today = data.today || "";
+  const tasks = combinedTodoItems(data.tasks || []).sort((a, b) => {
+    const focus = kanbanStatus(a) === "focus" ? -1 : kanbanStatus(b) === "focus" ? 1 : 0;
+    return focus || priorityScore(a) - priorityScore(b) || String(a.dueDate || "9999-99-99").localeCompare(String(b.dueDate || "9999-99-99"));
+  }).slice(0, 3);
+  const events = (data.calendar?.events || []).filter((event) => eventOverlapsDate(event, today)).filter((event) => !event.allDay).sort((a, b) => new Date(a.start) - new Date(b.start));
+  const plan = [
+    ...tasks.map((task, index) => ({ label: `${index + 1}`, title: task.title, meta: `${categoryName(task.category)}${task.dueDate ? ` / 期限 ${task.dueDate}` : ""}` })),
+    ...events.slice(0, 1).map((event) => ({ label: "予定", title: event.title, meta: formatCalendarTime(event) }))
+  ];
+  els.todayPlan.innerHTML = plan.length ? plan.map((item) => `<div class="today-plan-item"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.meta)}</small></div>`).join("") : '<div class="empty compact-empty">今日の予定とTODOはありません。</div>';
+}
+
+function renderWeeklyInsights(data) {
+  const stats = data.weeklyStats || { completed: 0, studySeconds: 0, activeDays: 0 };
+  if (els.weeklyReview) els.weeklyReview.innerHTML = `<div class="log-line">今週は${stats.activeDays}日活動しました。</div><div class="log-line">完了 ${stats.completed}件 / 学習 ${formatDuration(stats.studySeconds || 0)}</div><div class="log-line">来週へ: 未完了TODO ${(data.tasks || []).length}件を確認</div>`;
+  if (els.statistics) els.statistics.innerHTML = `<div><strong>${stats.completed}</strong><span>今週の完了</span></div><div><strong>${formatDuration(stats.studySeconds || 0)}</strong><span>今週の学習</span></div><div><strong>${stats.activeDays}</strong><span>活動日数</span></div>`;
+}
+
+function renderTaskDetail() {
+  const allTasks = combinedTodoItems(state.data?.tasks || []);
+  const task = allTasks.find((item) => item.id === state.selectedTaskId);
+  const detail = task ? state.data?.taskDetails?.[task.id] || {} : {};
+  if (els.taskDetailTitle) els.taskDetailTitle.textContent = task ? task.title : "TODOを選択";
+  if (els.taskPriorityInput) els.taskPriorityInput.value = detail.priority || "medium";
+  if (els.taskEstimateInput) els.taskEstimateInput.value = detail.estimateMinutes || "";
+  if (els.taskNoteInput) els.taskNoteInput.value = detail.note || "";
+  if (els.taskDetailSave) els.taskDetailSave.disabled = !task;
+}
+
+function notify(title, body) {
+  if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body });
 }
 function renderCommander(data) {
   if (!els.commanderSummary) return;
@@ -974,6 +1029,9 @@ function render(data) {
   els.aiModelLabel.textContent = els.ollamaModelInput.value || "Ollama";
   if (els.aiderModelLabel) els.aiderModelLabel.textContent = `質問: ${els.aiderAskModelInput?.value || "Ollama"} / 入力: ${els.aiderWriteModelInput?.value || "qwen code"}`;
   renderCommander(data);
+  renderTodayPlan(data);
+  renderWeeklyInsights(data);
+  renderTaskDetail();
   renderTasks(data.tasks || []);
   renderKanban(data);
   renderCalendar(data.calendar);
@@ -1137,6 +1195,14 @@ document.addEventListener("click", async (event) => {
       sendGoogleTaskButton.disabled = false;
       sendGoogleTaskButton.textContent = "Googleへ送る";
     }
+    return;
+  }
+
+const taskDetailButton = event.target.closest(".task-detail-button");
+  if (taskDetailButton) {
+    state.selectedTaskId = taskDetailButton.dataset.taskId || "";
+    renderTaskDetail();
+    document.querySelector(".task-detail-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
 
@@ -1395,6 +1461,22 @@ els.calendarEventForm.addEventListener("submit", async (event) => {
     els.calendarEventSubmit.textContent = "Google Calendarへ追加";
   }
 });
+els.notificationButton?.addEventListener("click", async () => {
+  if (!("Notification" in window)) { showMessage("このブラウザは通知に対応していません。", "error"); return; }
+  const result = await Notification.requestPermission();
+  if (result === "granted") { notify("Masa Life Command", "Windows通知を有効化しました。"); showMessage("Windows通知を有効化しました。"); }
+  else showMessage("通知は許可されませんでした。", "error");
+});
+
+els.taskDetailForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedTaskId) return;
+  try {
+    const result = await api("/api/tasks/details", { method: "POST", body: JSON.stringify({ taskId: state.selectedTaskId, priority: els.taskPriorityInput.value, estimateMinutes: els.taskEstimateInput.value, note: els.taskNoteInput.value }) });
+    render(result.state);
+    showMessage("TODO詳細を保存しました。");
+  } catch (error) { showMessage(error.message, "error"); }
+});
 els.todoAddForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const title = els.todoTitleInput.value.trim();
@@ -1466,6 +1548,7 @@ els.studyForm.addEventListener("submit", async (event) => {
     resetTimer();
     render(result.state);
     showMessage(result.focus ? "学習ログとFocusTODOの勉強時間を同期しました。" : "学習ログを今日の日記へ追記しました。");
+    notify("学習ログを記録", `${formatDuration(durationSeconds)}を記録しました。`);
   } catch (error) {
     showMessage(error.message, "error");
   }

@@ -2,6 +2,7 @@
 data/settings.json
 data/codex-last-*.txt
 data/kanban.json
+data/task-details.json
 .env
 .env.*
 

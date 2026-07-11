@@ -13,6 +13,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 const KANBAN_PATH = path.join(DATA_DIR, "kanban.json");
+const TASK_DETAILS_PATH = path.join(DATA_DIR, "task-details.json");
 const GOOGLE_REDIRECT_URI = `http://127.0.0.1:${PORT}/api/google/oauth/callback`;
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
@@ -133,6 +134,8 @@ async function moveKanbanTask(taskId, status) {
   if (!id) throw new Error("Kanbanへ移動するTODOが見つかりません。");
   if (!["backlog", "today", "focus", "waiting"].includes(nextStatus)) throw new Error("Kanbanの移動先が不正です。");
   const kanban = await readKanban();
+  const taskDetails = await readTaskDetails();
+  const weeklyStats = vaultExists ? await readWeeklyStats(settings) : { completed: 0, studySeconds: 0, activeDays: 0, days: [] };
   if (nextStatus === "backlog") {
     delete kanban.items[id];
   } else {
@@ -552,6 +555,54 @@ function safeOllamaUrl(rawUrl) {
   parsed.search = "";
   parsed.hash = "";
   return parsed.toString().replace(/\/$/, "");
+}
+function diaryRelPathForDate(date) {
+  const yyyy = String(date.getUTCFullYear());
+  const month = String(date.getUTCMonth() + 1);
+  const iso = date.toISOString().slice(0, 10);
+  return `01_日記/${yyyy}/${month}月/${iso}.md`;
+}
+
+async function readTaskDetails() {
+  const saved = await readJson(TASK_DETAILS_PATH, {});
+  return saved && typeof saved === "object" ? saved : {};
+}
+
+async function saveTaskDetails(details) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(TASK_DETAILS_PATH, JSON.stringify(details, null, 2), "utf8");
+  return details;
+}
+
+async function updateTaskDetails(payload = {}) {
+  const taskId = String(payload.taskId || "").trim();
+  if (!taskId) throw new Error("TODOが見つかりません。");
+  const priority = ["low", "medium", "high"].includes(payload.priority) ? payload.priority : "medium";
+  const estimateMinutes = Math.max(0, Math.min(1440, Number(payload.estimateMinutes || 0)));
+  const note = String(payload.note || "").trim().slice(0, 2000);
+  const details = await readTaskDetails();
+  details[taskId] = { priority, estimateMinutes: Math.round(estimateMinutes), note, updatedAt: new Date().toISOString() };
+  await saveTaskDetails(details);
+  return details[taskId];
+}
+
+async function readWeeklyStats(settings) {
+  const summary = { completed: 0, studySeconds: 0, activeDays: 0, days: [] };
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const date = new Date(`${todayParts().isoDate}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() - offset);
+    const relPath = diaryRelPathForDate(date);
+    const filePath = vaultFilePath(settings.vaultPath, relPath);
+    if (!(await fileExists(filePath))) continue;
+    const content = await fs.readFile(filePath, "utf8");
+    const completed = extractSectionLines(content, "今日の完了").filter((line) => /^-\s/.test(line)).length;
+    const studySeconds = [...content.matchAll(/mlc:study seconds=(\d+)/g)].reduce((total, match) => total + Number(match[1] || 0), 0);
+    summary.completed += completed;
+    summary.studySeconds += studySeconds;
+    if (completed || studySeconds) summary.activeDays += 1;
+    summary.days.push({ date: date.toISOString().slice(0, 10), completed, studySeconds });
+  }
+  return summary;
 }
 function dailyDiaryRelPath() {
   const today = todayParts();
@@ -1574,6 +1625,8 @@ async function appState() {
   const calendar = await readCalendar(settings);
   const googleTasks = await readGoogleTasks(settings);
   const kanban = await readKanban();
+  const taskDetails = await readTaskDetails();
+  const weeklyStats = vaultExists ? await readWeeklyStats(settings) : { completed: 0, studySeconds: 0, activeDays: 0, days: [] };
 
   return {
     today: todayParts().isoDate,
@@ -1583,6 +1636,8 @@ async function appState() {
     ...diary,
     calendar,
     googleTasks,
+    taskDetails,
+    weeklyStats,
     kanban
   };
 }
@@ -1681,6 +1736,11 @@ async function handleApi(req, res, url) {
       const body = await parseJsonBody(req);
       const result = await addTask(settings, body);
       return sendJson(res, 200, { ...result, state: await appState() });
+    }
+    if (req.method === "POST" && url.pathname === "/api/tasks/details") {
+      const body = await parseJsonBody(req);
+      const details = await updateTaskDetails(body);
+      return sendJson(res, 200, { details, state: await appState() });
     }
     if (req.method === "POST" && url.pathname === "/api/tasks/complete") {
       const settings = await loadSettings();

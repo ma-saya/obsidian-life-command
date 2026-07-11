@@ -68,6 +68,13 @@
           </div>
         </section>
 
+        <section class="panel today-plan-panel">
+          <div class="panel-head compact">
+            <h2>今日の自動プラン</h2>
+            <button id="notificationButton" class="secondary-button" type="button">通知を有効化</button>
+          </div>
+          <div id="todayPlan" class="today-plan-list"></div>
+        </section>
         <section class="panel calendar-panel">
           <div class="panel-head compact">
             <h2>Google Calendar</h2>
@@ -326,6 +333,15 @@
               </div>
             </section>
 
+            <section class="panel task-detail-panel">
+              <div class="panel-head compact"><h2>TODO詳細</h2><span id="taskDetailTitle" class="path-label">TODOを選択</span></div>
+              <form id="taskDetailForm" class="form-stack">
+                <label>優先度<select id="taskPriorityInput"><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></label>
+                <label>予定時間（分）<input id="taskEstimateInput" type="number" min="0" max="1440" step="5" /></label>
+                <label>メモ<textarea id="taskNoteInput" rows="3"></textarea></label>
+                <button id="taskDetailSave" class="secondary-button" type="submit" disabled>詳細を保存</button>
+              </form>
+            </section>
 <section class="panel">
               <div class="panel-head compact">
                 <h2>日記追記</h2>
@@ -381,6 +397,10 @@
           </div>
         </section>
 
+        <section class="log-grid weekly-grid">
+          <div class="panel"><h2>今週の振り返り</h2><div id="weeklyReview" class="log-list"></div></div>
+          <div class="panel"><h2>統計</h2><div id="statistics" class="stats-grid"></div></div>
+        </section>
         <section class="log-grid">
           <div class="panel">
             <h2>今日の完了</h2>

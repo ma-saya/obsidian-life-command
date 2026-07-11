@@ -1438,3 +1438,16 @@ button:disabled {
 .kanban-card.is-dragging { opacity: .45; }
 .kanban-column.is-drag-over { outline: 2px solid var(--accent, #0f8178); outline-offset: -2px; background: #eefaf8; }
 @media (max-width: 600px) { .todo-filters { grid-template-columns: 1fr; } }
+.today-plan-panel { margin-bottom: 16px; }
+.today-plan-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.today-plan-item { min-width: 0; border: 1px solid #dbe5e8; border-radius: 6px; padding: 10px; display: grid; gap: 4px; }
+.today-plan-item span { color: #0f8178; font-size: 12px; font-weight: 700; }
+.today-plan-item strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-plan-item small { color: #607482; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-detail-panel { background: #fbfdfd; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stats-grid > div { border-left: 3px solid #0f8178; padding: 6px 8px; }
+.stats-grid strong, .stats-grid span { display: block; }
+.stats-grid strong { font-size: 18px; }
+.stats-grid span { color: #607482; font-size: 12px; }
+@media (max-width: 760px) { .today-plan-list { grid-template-columns: 1fr; } }
