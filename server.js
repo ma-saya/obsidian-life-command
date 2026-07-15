@@ -930,6 +930,27 @@ async function completeLinkedGoogleTask(settings, payload, title) {
   });
   return linked;
 }
+function repeatGoogleNotes(notes, rule) {
+  const base = String(notes || "").replace(/(?:^|\n)mlc:repeat=(daily|weekly|monthly)/gi, "").trim();
+  return rule ? (base ? base + "\n" : "") + "mlc:repeat=" + rule : base;
+}
+async function syncLinkedGoogleRepeat(settings, payload, rule) {
+  if (!settings.googleTokens?.refresh_token && !settings.googleTokens?.access_token) return null;
+  const googleTasks = await readGoogleTasks(settings);
+  const source = "Obsidian: " + payload.fileRel + ":" + (Number(payload.lineIndex) + 1);
+  const marker = payload.id ? "mlc:obsidian-task-id=" + payload.id : "";
+  const linked = (googleTasks.tasks || []).find((task) => {
+    const notes = String(task.notes || "");
+    return (marker && notes.includes(marker)) || notes.includes(source) || task.title === payload.title;
+  });
+  if (!linked?.id) return null;
+  const taskListId = linked.taskListId || await resolveGoogleTaskListId(settings, taskCategoryId(settings, payload));
+  await googleApiFetch(settings, "https://tasks.googleapis.com/tasks/v1/lists/" + encodeURIComponent(taskListId) + "/tasks/" + encodeURIComponent(linked.id), {
+    method: "PATCH",
+    body: JSON.stringify({ notes: repeatGoogleNotes(linked.notes, rule) })
+  });
+  return linked;
+}
 async function updateTaskRepeatRule(settings, payload = {}) {
   const rule = String(payload.repeatRule || "").trim().toLowerCase();
   if (rule && !["daily", "weekly", "monthly"].includes(rule)) throw new Error("繰り返し設定が不正です。");
@@ -946,7 +967,8 @@ async function updateTaskRepeatRule(settings, payload = {}) {
   if (rule) nextLine += " 🔁 " + rule;
   lines[lineIndex] = nextLine;
   await fs.writeFile(filePath, lines.join("\n"), "utf8");
-  return { repeatRule: rule, lineIndex, raw: nextLine };
+  const googleTask = await syncLinkedGoogleRepeat(settings, { ...payload, lineIndex, raw: nextLine }, rule).catch((error) => ({ error: error.message }));
+  return { repeatRule: rule, lineIndex, raw: nextLine, googleTask };
 }
 async function completeTask(settings, payload) {
   const filePath = vaultFilePath(settings.vaultPath, payload.fileRel);
@@ -986,6 +1008,22 @@ async function completeTask(settings, payload) {
     lines.splice(lineIndex + 1, 0, nextLine);
     await fs.writeFile(filePath, lines.join("\n"), "utf8");
     recurringTask = { title, dueDate: nextDue, repeatRule };
+    if (linkedGoogleTask) {
+      try {
+        const latestStat = await fs.stat(filePath);
+        const nextParsed = parseTaskLine(nextLine, payload.fileRel, lineIndex + 1, latestStat.mtimeMs);
+        const recurringGoogleTask = await createGoogleTask(settings, {
+          title,
+          dueDate: nextDue,
+          notes: "Obsidian: " + payload.fileRel + ":" + (lineIndex + 2) + "\nmlc:repeat=" + repeatRule,
+          obsidianTaskId: nextParsed?.id || "",
+          category: payload.category || "normal"
+        });
+        recurringTask.googleTaskId = recurringGoogleTask?.id || "";
+      } catch (error) {
+        recurringTask.googleTaskError = error.message;
+      }
+    }
   }
   const diaryLines = [
     `- ${timeLabel()} 完了: ${title}`,
