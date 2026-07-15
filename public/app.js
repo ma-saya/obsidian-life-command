@@ -60,6 +60,12 @@ const els = {
   diaryPath: document.querySelector("#diaryPath"),
   completionLog: document.querySelector("#completionLog"),
   studyLog: document.querySelector("#studyLog"),
+  togglStatus: document.querySelector("#togglStatus"),
+  togglStartButton: document.querySelector("#togglStartButton"),
+  togglStopButton: document.querySelector("#togglStopButton"),
+  togglSyncButton: document.querySelector("#togglSyncButton"),
+  readwiseStatus: document.querySelector("#readwiseStatus"),
+  readwiseSyncButton: document.querySelector("#readwiseSyncButton"),
   message: document.querySelector("#message"),
   refreshButton: document.querySelector("#refreshButton"),
   todoRefresh: document.querySelector("#todoRefresh"),
@@ -110,6 +116,9 @@ const els = {
   googleClientSecretInput: document.querySelector("#googleClientSecretInput"),
   googleCalendarIdInput: document.querySelector("#googleCalendarIdInput"),
   googleTaskListIdInput: document.querySelector("#googleTaskListIdInput"),
+  togglApiTokenInput: document.querySelector("#togglApiTokenInput"),
+  togglWorkspaceIdInput: document.querySelector("#togglWorkspaceIdInput"),
+  readwiseTokenInput: document.querySelector("#readwiseTokenInput"),
   categorySummary: document.querySelector("#categorySummary"),
   categoryToggle: document.querySelector("#categoryToggle"),
   categorySettingsBody: document.querySelector("#categorySettingsBody"),
@@ -1023,6 +1032,11 @@ function render(data) {
   if (els.googleClientIdInput) els.googleClientIdInput.value = data.settings.googleClientId || "";
   if (els.googleCalendarIdInput) els.googleCalendarIdInput.value = data.settings.googleCalendarId || "primary";
   if (els.googleTaskListIdInput) els.googleTaskListIdInput.value = data.settings.googleTaskListId || "";
+  if (els.togglWorkspaceIdInput) els.togglWorkspaceIdInput.value = data.settings.togglWorkspaceId || "";
+  if (els.togglApiTokenInput) els.togglApiTokenInput.placeholder = data.settings.togglConnected ? "保存済み。変更しないなら空のまま" : "Toggl APIトークン";
+  if (els.readwiseTokenInput) els.readwiseTokenInput.placeholder = data.settings.readwiseConnected ? "保存済み。変更しないなら空のまま" : "Readwiseアクセストークン";
+  if (els.togglStatus) els.togglStatus.textContent = data.settings.togglConnected ? "接続済み" : "未接続。設定からトークンとWorkspace IDを保存してください。";
+  if (els.readwiseStatus) els.readwiseStatus.textContent = data.settings.readwiseConnected ? "接続済み" : "未接続。設定からアクセストークンを保存してください。";
   if (els.googleClientSecretInput) els.googleClientSecretInput.placeholder = data.settings.googleClientSecretSet ? "保存済み。変更しないなら空のまま" : "Google OAuth Client Secret";
   renderCategoryControls(data);
   if (els.googleCalendarStatus) els.googleCalendarStatus.textContent = data.settings.googleConnected ? "Google接続済み" : "Google未接続";
@@ -1747,6 +1761,36 @@ els.kanbanBoard?.addEventListener("drop", async (event) => {
   } catch (error) {
     showMessage(error.message, "error");
   }
+});
+els.togglStartButton?.addEventListener("click", async () => {
+  try {
+    await api("/api/toggl/start", { method: "POST", body: JSON.stringify({ description: els.studyMemo?.value || els.studyCategory?.value || "学習" }) });
+    if (els.togglStatus) els.togglStatus.textContent = "計測中";
+    showMessage("Toggl Trackで計測を開始しました。");
+  } catch (error) { showMessage(error.message, "error"); }
+});
+els.togglStopButton?.addEventListener("click", async () => {
+  try {
+    const result = await api("/api/toggl/current");
+    if (!result.entry?.id) throw new Error("Togglで計測中のタイマーがありません。");
+    await api("/api/toggl/stop", { method: "POST", body: JSON.stringify({ entryId: result.entry.id }) });
+    if (els.togglStatus) els.togglStatus.textContent = "接続済み";
+    showMessage("Toggl Trackの計測を停止しました。");
+  } catch (error) { showMessage(error.message, "error"); }
+});
+els.togglSyncButton?.addEventListener("click", async () => {
+  try {
+    const result = await api("/api/toggl/sync", { method: "POST", body: "{}" });
+    render(result.state);
+    showMessage("Togglの" + result.count + "件を今日の日記へ同期しました。");
+  } catch (error) { showMessage(error.message, "error"); }
+});
+els.readwiseSyncButton?.addEventListener("click", async () => {
+  try {
+    const result = await api("/api/readwise/sync", { method: "POST", body: JSON.stringify({ days: 30 }) });
+    render(result.state);
+    showMessage(result.added + "件のハイライトを" + result.noteRelPath + "へ同期しました。");
+  } catch (error) { showMessage(error.message, "error"); }
 });
 els.settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();

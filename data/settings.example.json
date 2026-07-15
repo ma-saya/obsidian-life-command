@@ -20,6 +20,9 @@
     { "id": "google", "name": "Google Tasks", "googleTaskListId": "" }
   ],
   "googleTokens": null,
+  "togglApiToken": "",
+  "togglWorkspaceId": "",
+  "readwiseToken": "",
   "taskFiles": [
     "07_タスク管理/📥_受信箱.md",
     "07_タスク管理/🏆_タスク管理.md",

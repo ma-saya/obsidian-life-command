@@ -42,6 +42,9 @@ const DEFAULT_SETTINGS = {
     { id: "google", name: "Google Tasks", googleTaskListId: "" }
   ],
   googleTokens: null,
+  togglApiToken: "",
+  togglWorkspaceId: "",
+  readwiseToken: "",
   taskFiles: [
     "07_タスク管理/📥_受信箱.md",
     "07_タスク管理/🏆_タスク管理.md",
@@ -223,15 +226,103 @@ async function saveSettings(settings) {
 }
 
 function publicSettings(settings) {
-  const { googleClientSecret, googleTokens, ...safeSettings } = settings;
+  const { googleClientSecret, googleTokens, togglApiToken, readwiseToken, ...safeSettings } = settings;
   return {
     ...safeSettings,
     googleClientSecretSet: Boolean(googleClientSecret),
     googleConnected: Boolean(googleTokens?.refresh_token || googleTokens?.access_token),
+    togglConnected: Boolean(togglApiToken && settings.togglWorkspaceId),
+    readwiseConnected: Boolean(readwiseToken),
     googleRedirectUri: GOOGLE_REDIRECT_URI
   };
 }
 
+function requireTogglConfig(settings) {
+  if (!settings.togglApiToken || !settings.togglWorkspaceId) throw new Error("Toggl TrackのAPIトークンとWorkspace IDを設定してください。");
+}
+async function togglApiFetch(settings, url, options = {}) {
+  requireTogglConfig(settings);
+  const auth = Buffer.from(settings.togglApiToken + ":api_token").toString("base64");
+  const response = await fetch(url, { ...options, headers: { Authorization: "Basic " + auth, "Content-Type": "application/json", ...(options.headers || {}) } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || body.message || ("Toggl API error: " + response.status));
+  return body;
+}
+function isoDateDaysAgo(days) {
+  const date = new Date();
+  date.setDate(date.getDate() - Number(days || 0));
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(date);
+}
+async function readTogglToday(settings) {
+  const date = isoDateDaysAgo(0);
+  const url = "https://api.track.toggl.com/api/v9/workspaces/" + encodeURIComponent(settings.togglWorkspaceId) + "/time_entries?start_date=" + date + "&end_date=" + date;
+  const entries = await togglApiFetch(settings, url);
+  return Array.isArray(entries) ? entries : [];
+}
+async function readTogglCurrent(settings) {
+  return togglApiFetch(settings, "https://api.track.toggl.com/api/v9/me/time_entries/current");
+}
+async function startTogglTimer(settings, payload = {}) {
+  const description = String(payload.description || "Masa Life Command").trim().slice(0, 200);
+  const url = "https://api.track.toggl.com/api/v9/workspaces/" + encodeURIComponent(settings.togglWorkspaceId) + "/time_entries";
+  return togglApiFetch(settings, url, { method: "POST", body: JSON.stringify({ description, start: new Date().toISOString(), duration: -1, created_with: "masa-life-command" }) });
+}
+async function stopTogglTimer(settings, entryId) {
+  if (!entryId) throw new Error("停止するTogglタイマーが見つかりません。");
+  const url = "https://api.track.toggl.com/api/v9/workspaces/" + encodeURIComponent(settings.togglWorkspaceId) + "/time_entries/" + encodeURIComponent(entryId) + "/stop";
+  return togglApiFetch(settings, url, { method: "PATCH" });
+}
+async function syncTogglTodayToDiary(settings) {
+  const entries = await readTogglToday(settings);
+  const diaryRelPath = dailyDiaryRelPath();
+  const diaryPath = vaultFilePath(settings.vaultPath, diaryRelPath);
+  const existing = await fileExists(diaryPath) ? await fs.readFile(diaryPath, "utf8") : "";
+  const fresh = entries.filter((entry) => entry.id && !existing.includes("mlc:toggl id=\"" + entry.id + "\""));
+  if (fresh.length === 0) return { count: 0, diaryRelPath };
+  const lines = fresh.map((entry) => {
+    const seconds = Math.max(0, Number(entry.duration || 0));
+    const description = String(entry.description || "無題").split(String.fromCharCode(10)).join(" ");
+    return ["- " + description + ": " + formatDuration(seconds), "  - Toggl Track", "  <!-- mlc:toggl id=\"" + entry.id + "\" seconds=" + seconds + " -->"];
+  }).flat();
+  return { count: fresh.length, diaryRelPath: await appendToDailyDiary(settings.vaultPath, "Toggl Track", lines) };
+}
+function requireReadwiseConfig(settings) {
+  if (!settings.readwiseToken) throw new Error("Readwiseのアクセストークンを設定してください。");
+}
+async function readwiseApiFetch(settings, url) {
+  requireReadwiseConfig(settings);
+  const response = await fetch(url, { headers: { Authorization: "Token " + settings.readwiseToken } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || body.error || ("Readwise API error: " + response.status));
+  return body;
+}
+async function syncReadwiseHighlights(settings, days = 30) {
+  const updatedAfter = new Date(Date.now() - Math.max(1, Number(days || 30)) * 86400000).toISOString();
+  const url = "https://readwise.io/api/v2/export/?updatedAfter=" + encodeURIComponent(updatedAfter);
+  const body = await readwiseApiFetch(settings, url);
+  const books = Array.isArray(body.results) ? body.results : [];
+  const noteRelPath = "Readwise/ハイライト.md";
+  const notePath = vaultFilePath(settings.vaultPath, noteRelPath);
+  const existing = await fileExists(notePath) ? await fs.readFile(notePath, "utf8") : "# Readwiseハイライト" + String.fromCharCode(10);
+  let next = existing;
+  let added = 0;
+  for (const book of books) {
+    const bookId = String(book.book_id || book.id || "");
+    if (!bookId || next.includes("<!-- mlc:readwise book=\"" + bookId + "\" -->")) continue;
+    const title = String(book.title || "無題").split(String.fromCharCode(10)).join(" ");
+    const author = book.author ? " / " + String(book.author).split(String.fromCharCode(10)).join(" ") : "";
+    const highlights = Array.isArray(book.highlights) ? book.highlights : [];
+    const lines = ["", "## " + title + author, "<!-- mlc:readwise book=\"" + bookId + "\" -->"];
+    for (const highlight of highlights) {
+      const text = String(highlight.text || "").trim();
+      if (text) lines.push("- " + text.split(String.fromCharCode(10)).join(" "));
+      if (highlight.note) lines.push("  - メモ: " + String(highlight.note).split(String.fromCharCode(10)).join(" "));
+    }
+    if (highlights.length) { next += lines.join(String.fromCharCode(10)) + String.fromCharCode(10); added += highlights.length; }
+  }
+  if (next !== existing) { await fs.mkdir(path.dirname(notePath), { recursive: true }); await fs.writeFile(notePath, next, "utf8"); }
+  return { added, books: books.length, noteRelPath };
+}
 function requireGoogleConfig(settings) {
   if (!settings.googleClientId || !settings.googleClientSecret) {
     throw new Error("Google OAuthのClient IDとClient Secretを設定してください。");
@@ -1678,6 +1769,9 @@ async function handleApi(req, res, url) {
         googleClientSecret: String(body.googleClientSecret || current.googleClientSecret || "").trim(),
         googleCalendarId: String(body.googleCalendarId || "primary").trim() || "primary",
         googleTaskListId: String(body.googleTaskListId || "").trim(),
+         togglApiToken: String(body.togglApiToken || current.togglApiToken || "").trim(),
+         togglWorkspaceId: String(body.togglWorkspaceId || "").trim(),
+         readwiseToken: String(body.readwiseToken || current.readwiseToken || "").trim(),
         todoCategories: sanitizeTodoCategories(body.todoCategories || current.todoCategories, body.googleTaskCategoryListIds || current.googleTaskCategoryListIds || {})
       };
       nextSettings.todoCategories = await ensureGoogleTaskListsForCategories(nextSettings, nextSettings.todoCategories);
@@ -1685,6 +1779,29 @@ async function handleApi(req, res, url) {
       return sendJson(res, 200, { settings: publicSettings(settings), vaultExists: await fileExists(settings.vaultPath) });
     }
 
+    if (req.method === "GET" && url.pathname === "/api/toggl/current") {
+      const settings = await loadSettings();
+      return sendJson(res, 200, { entry: await readTogglCurrent(settings) });
+    }
+    if (req.method === "POST" && url.pathname === "/api/toggl/start") {
+      const settings = await loadSettings();
+      const body = await parseJsonBody(req);
+      return sendJson(res, 200, { entry: await startTogglTimer(settings, body) });
+    }
+    if (req.method === "POST" && url.pathname === "/api/toggl/stop") {
+      const settings = await loadSettings();
+      const body = await parseJsonBody(req);
+      return sendJson(res, 200, { entry: await stopTogglTimer(settings, body.entryId) });
+    }
+    if (req.method === "POST" && url.pathname === "/api/toggl/sync") {
+      const settings = await loadSettings();
+      return sendJson(res, 200, { ...(await syncTogglTodayToDiary(settings)), state: await appState() });
+    }
+    if (req.method === "POST" && url.pathname === "/api/readwise/sync") {
+      const settings = await loadSettings();
+      const body = await parseJsonBody(req);
+      return sendJson(res, 200, { ...(await syncReadwiseHighlights(settings, body.days)), state: await appState() });
+    }
     if (req.method === "GET" && url.pathname === "/api/state") {
       return sendJson(res, 200, await appState());
     }

@@ -395,6 +395,25 @@
               </form>
             </section>
           </div>
+          <section class="panel integration-panel">
+            <div class="panel-head compact"><h2>外部サービス</h2><span class="path-label">Toggl / Readwise</span></div>
+            <div class="integration-grid">
+              <div>
+                <strong>Toggl Track</strong>
+                <p id="togglStatus" class="settings-note">未接続</p>
+                <div class="button-row">
+                  <button id="togglStartButton" class="secondary-button" type="button">Togglで開始</button>
+                  <button id="togglStopButton" class="secondary-button" type="button">Togglで停止</button>
+                  <button id="togglSyncButton" class="secondary-button" type="button">今日の記録を同期</button>
+                </div>
+              </div>
+              <div>
+                <strong>Readwise Reader</strong>
+                <p id="readwiseStatus" class="settings-note">未接続</p>
+                <button id="readwiseSyncButton" class="secondary-button" type="button">ハイライトをObsidianへ同期</button>
+              </div>
+            </div>
+          </section>
         </section>
 
         <section class="log-grid weekly-grid">
@@ -434,6 +453,18 @@
             <label>
               Aider入力・保存/編集モデル（qwen code）
               <input id="aiderWriteModelInput" type="text" placeholder="例: qwen3-coder:latest" />
+            </label>
+            <label>
+              Toggl Track APIトークン
+              <input id="togglApiTokenInput" type="password" placeholder="保存済みなら空のままでOK" />
+            </label>
+            <label>
+              Toggl Track Workspace ID
+              <input id="togglWorkspaceIdInput" type="text" placeholder="TogglのWorkspace ID" />
+            </label>
+            <label>
+              Readwiseアクセストークン
+              <input id="readwiseTokenInput" type="password" placeholder="保存済みなら空のままでOK" />
             </label>
             <label>
               Google Calendar iCal URL
