@@ -1987,7 +1987,7 @@ async function serveStatic(req, res, url) {
   }
   try {
     const content = await fs.readFile(target);
-    res.writeHead(200, { "Content-Type": MIME_TYPES.get(path.extname(target)) || "application/octet-stream" });
+    res.writeHead(200, { "Content-Type": MIME_TYPES.get(path.extname(target)) || "application/octet-stream", "Cache-Control": "no-store, no-cache, must-revalidate" });
     return res.end(content);
   } catch {
     res.writeHead(404);
