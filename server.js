@@ -930,6 +930,24 @@ async function completeLinkedGoogleTask(settings, payload, title) {
   });
   return linked;
 }
+async function updateTaskRepeatRule(settings, payload = {}) {
+  const rule = String(payload.repeatRule || "").trim().toLowerCase();
+  if (rule && !["daily", "weekly", "monthly"].includes(rule)) throw new Error("繰り返し設定が不正です。");
+  const filePath = vaultFilePath(settings.vaultPath, payload.fileRel);
+  const content = await fs.readFile(filePath, "utf8");
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  let lineIndex = Number(payload.lineIndex);
+  if (!Number.isInteger(lineIndex) || lineIndex < 0 || lineIndex >= lines.length || lines[lineIndex] !== payload.raw) {
+    lineIndex = lines.findIndex((line) => line === payload.raw);
+  }
+  if (lineIndex === -1) throw new Error("対象TODO行が見つかりません。Obsidian側で変更されている可能性があります。");
+  if (!/^\s*-\s\[ \]\s/.test(lines[lineIndex])) throw new Error("未完了TODOだけ繰り返し設定を変更できます。");
+  let nextLine = lines[lineIndex].replace(/\s*🔁\s*(daily|weekly|monthly)/gi, "").trimEnd();
+  if (rule) nextLine += " 🔁 " + rule;
+  lines[lineIndex] = nextLine;
+  await fs.writeFile(filePath, lines.join("\n"), "utf8");
+  return { repeatRule: rule, lineIndex, raw: nextLine };
+}
 async function completeTask(settings, payload) {
   const filePath = vaultFilePath(settings.vaultPath, payload.fileRel);
   const stat = await fs.stat(filePath);
@@ -966,7 +984,7 @@ async function completeTask(settings, payload) {
     const categoryTag = payload.category && !["normal", "reading"].includes(payload.category) ? ` #mlc/category/${payload.category}` : "";
     const nextLine = `- [ ] ${title}${nextDue ? ` 📅 ${nextDue}` : ""} 🔁 ${repeatRule} #task${categoryTag}`;
     lines.splice(lineIndex + 1, 0, nextLine);
-    await fs.writeFile(filePath, lines.join("\\n"), "utf8");
+    await fs.writeFile(filePath, lines.join("\n"), "utf8");
     recurringTask = { title, dueDate: nextDue, repeatRule };
   }
   const diaryLines = [
@@ -1900,6 +1918,12 @@ async function handleApi(req, res, url) {
       const body = await parseJsonBody(req);
       const details = await updateTaskDetails(body);
       return sendJson(res, 200, { details, state: await appState() });
+    }
+    if (req.method === "POST" && url.pathname === "/api/tasks/repeat") {
+      const settings = await loadSettings();
+      const body = await parseJsonBody(req);
+      const result = await updateTaskRepeatRule(settings, body);
+      return sendJson(res, 200, { ...result, state: await appState() });
     }
     if (req.method === "POST" && url.pathname === "/api/tasks/complete") {
       const settings = await loadSettings();

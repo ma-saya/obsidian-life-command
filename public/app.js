@@ -259,6 +259,7 @@ function buildAiPrompt() {
   const data = state.data || {};
   const tasks = (data.tasks || []).slice(0, 20).map((task, index) => {
     const due = task.dueDate ? ` / 期限:${task.dueDate}` : "";
+       const repeat = task.repeatRule ? '<span class="chip">🔁 ' + escapeHtml(task.repeatRule) + '</span>' : "";
     return `${index + 1}. ${task.title}${due} / 出典:${task.fileRel}:${task.lineIndex + 1}`;
   });
   const completions = (data.completionLines || []).slice(-8).join("\n");
@@ -295,6 +296,7 @@ function buildConsultPrompt(question) {
   const data = state.data || {};
   const tasks = (data.tasks || []).slice(0, 15).map((task, index) => {
     const due = task.dueDate ? ` / 期限:${task.dueDate}` : "";
+       const repeat = task.repeatRule ? '<span class="chip">🔁 ' + escapeHtml(task.repeatRule) + '</span>' : "";
     return `${index + 1}. ${task.title}${due}`;
   });
   const completions = (data.completionLines || []).slice(-6).join("\n");
@@ -526,6 +528,7 @@ function renderTaskGroup(title, tasks, emptyText) {
   const rows = tasks
     .map((task) => {
       const due = task.dueDate ? `<span class="chip">📅 ${escapeHtml(task.dueDate)}</span>` : "";
+       const repeat = task.repeatRule ? '<span class="chip">🔁 ' + escapeHtml(task.repeatRule) + '</span>' : "";
        const detail = state.data?.taskDetails?.[task.id] || {};
        const detailChip = detail.estimateMinutes ? `<span class="chip">⏱ ${escapeHtml(String(detail.estimateMinutes))}分</span>` : "";
       const isGoogleTask = task.source === "google";
@@ -536,6 +539,12 @@ function renderTaskGroup(title, tasks, emptyText) {
         ? `<button class="secondary-button complete-google-task" type="button" data-google-task-id="${escapeHtml(task.googleTaskId)}" data-google-task-list-id="${escapeHtml(task.taskListId || "")}">完了</button>`
         : `<button class="secondary-button send-google-task" type="button">Googleへ送る</button>
             <button class="secondary-button task-detail-button" type="button" data-task-id="${escapeHtml(task.id)}">詳細</button>
+             <select class="task-repeat-select" aria-label="繰り返し設定">
+  <option value="">繰り返さない</option>
+  <option value="daily">毎日</option>
+  <option value="weekly">毎週</option>
+  <option value="monthly">毎月</option>
+</select>
             <button class="secondary-button complete-task" type="button">完了</button>`;      return `
         <article class="todo-row" data-id="${task.id}">
           <div class="todo-check">✓</div>
@@ -545,6 +554,7 @@ function renderTaskGroup(title, tasks, emptyText) {
               ${categoryChip}
               ${listChip}
               ${due}
+              ${repeat}
               <span>${source}</span>
             </div>
           </div>
@@ -602,6 +612,7 @@ function kanbanStatus(task) {
 
 function kanbanTaskMeta(task) {
   const due = task.dueDate ? `<span class="chip">📅 ${escapeHtml(task.dueDate)}</span>` : "";
+       const repeat = task.repeatRule ? '<span class="chip">🔁 ' + escapeHtml(task.repeatRule) + '</span>' : "";
        const detail = state.data?.taskDetails?.[task.id] || {};
        const detailChip = detail.estimateMinutes ? `<span class="chip">⏱ ${escapeHtml(String(detail.estimateMinutes))}分</span>` : "";
   const category = `<span class="chip">${escapeHtml(categoryName(task.category || categoryIdFromTask(task)))}</span>`;
@@ -724,6 +735,12 @@ function renderCommander(data) {
   els.commanderLog.textContent = `${completionCount}件完了`;
   els.commanderLogMeta.textContent = studyCount ? `学習ログ ${studyCount}件` : "まだ学習ログはありません";
 }
+function syncTaskRepeatSelects() {
+  els.todoList?.querySelectorAll(".task-repeat-select").forEach((select) => {
+    const task = state.data?.tasks?.find((item) => item.id === select.closest(".todo-row")?.dataset.id);
+    select.value = task?.repeatRule || "";
+  });
+}
 function renderTasks(tasks) {
   const categories = getTodoCategories();
   const categoryIds = new Set(categories.map((category) => category.id));
@@ -771,11 +788,13 @@ function renderTasks(tasks) {
     els.todoList.innerHTML = categoryGroups
       .map((category) => renderTaskGroup(category.name, category.tasks, category.empty))
       .join("");
+    syncTaskRepeatSelects();
     return;
   }
 
   const category = categoryGroups.find((item) => item.id === state.todoCategory) || categoryGroups[0];
   els.todoList.innerHTML = renderTaskGroup(category.name, category.tasks, category.empty);
+  syncTaskRepeatSelects();
 }
 
 function minutesSinceMidnight(date) {
@@ -996,6 +1015,7 @@ function renderGoogleTasks(googleTasks) {
   }
   els.googleTasksList.innerHTML = tasks.map((task) => {
     const due = formatGoogleTaskDue(task.due);
+       const repeat = task.repeatRule ? '<span class="chip">🔁 ' + escapeHtml(task.repeatRule) + '</span>' : "";
     const notes = task.notes ? `<div class="mini-list-note">${escapeHtml(task.notes)}</div>` : "";
     const list = task.taskListTitle ? `<span class="chip">${escapeHtml(categoryName(task.category))} / ${escapeHtml(task.taskListTitle)}</span>` : "";
     return `
@@ -1125,6 +1145,25 @@ function resetTimer() {
   updateTimerDisplay();
 }
 
+document.addEventListener("change", async (event) => {
+  const repeatSelect = event.target.closest(".task-repeat-select");
+  if (!repeatSelect) return;
+  const row = repeatSelect.closest(".todo-row");
+  const task = state.data?.tasks?.find((item) => item.id === row?.dataset.id);
+  if (!task) return;
+  repeatSelect.disabled = true;
+  try {
+    const result = await api("/api/tasks/repeat", {
+      method: "POST",
+      body: JSON.stringify({ ...task, repeatRule: repeatSelect.value })
+    });
+    render(result.state);
+    showMessage(repeatSelect.value ? "繰り返し設定を保存しました。" : "繰り返し設定を解除しました。");
+  } catch (error) {
+    showMessage(error.message, "error");
+    repeatSelect.disabled = false;
+  }
+});
 document.addEventListener("click", async (event) => {
   const calendarPrevMonth = event.target.closest(".calendar-prev-month");
   const calendarNextMonth = event.target.closest(".calendar-next-month");
