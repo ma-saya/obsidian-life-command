@@ -395,25 +395,28 @@
               </form>
             </section>
           </div>
-          <section class="panel integration-panel">
-            <div class="panel-head compact"><h2>外部サービス</h2><span class="path-label">Toggl / Readwise</span></div>
-            <div class="integration-grid">
-              <div>
-                <strong>Toggl Track</strong>
-                <p id="togglStatus" class="settings-note">未接続</p>
-                <div class="button-row">
-                  <button id="togglStartButton" class="secondary-button" type="button">Togglで開始</button>
-                  <button id="togglStopButton" class="secondary-button" type="button">Togglで停止</button>
-                  <button id="togglSyncButton" class="secondary-button" type="button">今日の記録を同期</button>
-                </div>
-              </div>
-              <div>
-                <strong>Readwise Reader</strong>
-                <p id="readwiseStatus" class="settings-note">未接続</p>
-                <button id="readwiseSyncButton" class="secondary-button" type="button">ハイライトをObsidianへ同期</button>
-              </div>
-            </div>
-          </section>
+          <section class="panel local-tools-panel">
+  <div class="panel-head compact"><h2>ローカル生産性</h2><span class="path-label">Obsidian保存</span></div>
+  <div class="local-time-summary">
+    <strong>時間管理</strong>
+    <span id="localTimeSummary">勉強タイマーの記録をObsidianへ保存します。</span>
+  </div>
+  <form id="localHighlightForm" class="form-stack">
+    <strong>読書ハイライト</strong>
+    <div class="form-grid-two">
+      <label>本・記事<input id="localHighlightTitle" type="text" placeholder="例: LIFE SHIFT" required /></label>
+      <label>著者<input id="localHighlightAuthor" type="text" placeholder="任意" /></label>
+    </div>
+    <label>ハイライト<textarea id="localHighlightText" rows="4" placeholder="印象に残った文章や学びを貼り付ける" required></textarea></label>
+    <label>自分のメモ<input id="localHighlightNote" type="text" placeholder="なぜ重要か、どう使うか" /></label>
+    <label>タグ<input id="localHighlightTag" type="text" placeholder="例: お金 / 習慣" /></label>
+    <div class="button-row">
+      <button id="localHighlightSave" class="primary-button" type="submit">Obsidianへ保存</button>
+      <button id="localHighlightTodo" class="secondary-button" type="button">読書TODOにする</button>
+    </div>
+    <div id="localHighlightFeedback" class="form-feedback" hidden></div>
+  </form>
+</section>
         </section>
 
         <section class="log-grid weekly-grid">

@@ -66,6 +66,15 @@ const els = {
   togglSyncButton: document.querySelector("#togglSyncButton"),
   readwiseStatus: document.querySelector("#readwiseStatus"),
   readwiseSyncButton: document.querySelector("#readwiseSyncButton"),
+  localTimeSummary: document.querySelector("#localTimeSummary"),
+  localHighlightForm: document.querySelector("#localHighlightForm"),
+  localHighlightTitle: document.querySelector("#localHighlightTitle"),
+  localHighlightAuthor: document.querySelector("#localHighlightAuthor"),
+  localHighlightText: document.querySelector("#localHighlightText"),
+  localHighlightNote: document.querySelector("#localHighlightNote"),
+  localHighlightTag: document.querySelector("#localHighlightTag"),
+  localHighlightTodo: document.querySelector("#localHighlightTodo"),
+  localHighlightFeedback: document.querySelector("#localHighlightFeedback"),
   message: document.querySelector("#message"),
   refreshButton: document.querySelector("#refreshButton"),
   todoRefresh: document.querySelector("#todoRefresh"),
@@ -1037,6 +1046,7 @@ function render(data) {
   if (els.readwiseTokenInput) els.readwiseTokenInput.placeholder = data.settings.readwiseConnected ? "保存済み。変更しないなら空のまま" : "Readwiseアクセストークン";
   if (els.togglStatus) els.togglStatus.textContent = data.settings.togglConnected ? "接続済み" : "未接続。設定からトークンとWorkspace IDを保存してください。";
   if (els.readwiseStatus) els.readwiseStatus.textContent = data.settings.readwiseConnected ? "接続済み" : "未接続。設定からアクセストークンを保存してください。";
+  if (els.localTimeSummary) els.localTimeSummary.textContent = "今週 " + formatDuration(data.weeklyStats?.studySeconds || 0) + " / 活動 " + (data.weeklyStats?.activeDays || 0) + "日。勉強タイマーから記録できます。";
   if (els.googleClientSecretInput) els.googleClientSecretInput.placeholder = data.settings.googleClientSecretSet ? "保存済み。変更しないなら空のまま" : "Google OAuth Client Secret";
   renderCategoryControls(data);
   if (els.googleCalendarStatus) els.googleCalendarStatus.textContent = data.settings.googleConnected ? "Google接続済み" : "Google未接続";
@@ -1790,6 +1800,32 @@ els.readwiseSyncButton?.addEventListener("click", async () => {
     const result = await api("/api/readwise/sync", { method: "POST", body: JSON.stringify({ days: 30 }) });
     render(result.state);
     showMessage(result.added + "件のハイライトを" + result.noteRelPath + "へ同期しました。");
+  } catch (error) { showMessage(error.message, "error"); }
+});
+els.localHighlightForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const result = await api("/api/reading/highlight", { method: "POST", body: JSON.stringify({
+      title: els.localHighlightTitle.value,
+      author: els.localHighlightAuthor.value,
+      text: els.localHighlightText.value,
+      note: els.localHighlightNote.value,
+      tag: els.localHighlightTag.value
+    }) });
+    els.localHighlightFeedback.textContent = result.duplicate ? "同じハイライトは既に保存されています。" : result.relPath + "へ保存しました。";
+    els.localHighlightFeedback.hidden = false;
+    if (!result.duplicate) els.localHighlightText.value = "";
+    showMessage(result.duplicate ? "重複をスキップしました。" : "読書ハイライトをObsidianへ保存しました。");
+  } catch (error) { showMessage(error.message, "error"); }
+});
+els.localHighlightTodo?.addEventListener("click", async () => {
+  try {
+    const result = await api("/api/reading/todo", { method: "POST", body: JSON.stringify({
+      title: els.localHighlightTitle.value,
+      text: els.localHighlightNote.value || els.localHighlightText.value
+    }) });
+    render(result.state);
+    showMessage("読書から得たTODOを追加しました。");
   } catch (error) { showMessage(error.message, "error"); }
 });
 els.settingsForm.addEventListener("submit", async (event) => {

@@ -821,6 +821,38 @@ async function appendToDailyDiary(vaultPath, heading, entryLines) {
   return diary.relPath;
 }
 
+async function saveLocalHighlight(settings, payload = {}) {
+  const title = String(payload.title || "無題").trim().slice(0, 200);
+  const author = String(payload.author || "").trim().slice(0, 120);
+  const text = String(payload.text || "").trim();
+  const note = String(payload.note || "").trim();
+  const tag = String(payload.tag || "").trim().replace(/[^A-Za-z0-9_\-ぁ-んァ-ヶ一-龠#]/g, "").slice(0, 40);
+  if (!text) throw new Error("ハイライトを入力してください。");
+  const sourceKey = title + "|" + text;
+  const marker = createHash("sha1").update(sourceKey).digest("hex").slice(0, 12);
+  const relPath = "読書/ハイライト.md";
+  const filePath = vaultFilePath(settings.vaultPath, relPath);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  let content = await fileExists(filePath) ? await fs.readFile(filePath, "utf8") : "# 読書ハイライト\n\n";
+  if (content.includes("mlc:highlight id=\"" + marker + "\"")) return { relPath, duplicate: true, marker };
+  const lines = [
+    "## " + title + (author ? " / " + author : ""),
+    "- " + text.split(String.fromCharCode(10)).join(" "),
+    ...(note ? ["  - メモ: " + note.split(String.fromCharCode(10)).join(" ")] : []),
+    ...(tag ? ["  - タグ: " + (tag.startsWith("#") ? tag : "#" + tag)] : []),
+    "<!-- mlc:highlight id=\"" + marker + "\" date=\"" + todayParts().isoDate + "\" -->",
+    ""
+  ];
+  if (!content.endsWith(String.fromCharCode(10))) content += String.fromCharCode(10);
+  await fs.writeFile(filePath, content + lines.join(String.fromCharCode(10)), "utf8");
+  return { relPath, duplicate: false, marker };
+}
+async function createReadingTodo(settings, payload = {}) {
+  const title = String(payload.title || "読書からの学び").trim();
+  const text = String(payload.text || "").trim();
+  if (!text) throw new Error("TODO化する学びを入力してください。");
+  return addTask(settings, { title: "【" + title + "】" + text.split(String.fromCharCode(10)).join(" ").slice(0, 180), kind: "reading", dueDate: payload.dueDate || "" });
+}
 async function addTask(settings, payload) {
   const title = String(payload.title || "").trim();
   if (!title) throw new Error("追加するTODOを入力してください。");
@@ -1847,6 +1879,16 @@ async function handleApi(req, res, url) {
       const body = await parseJsonBody(req);
       const event = await createGoogleCalendarEvent(settings, body);
       return sendJson(res, 200, { event, state: await appState() });
+    }
+    if (req.method === "POST" && url.pathname === "/api/reading/highlight") {
+      const settings = await loadSettings();
+      const body = await parseJsonBody(req);
+      return sendJson(res, 200, { ...(await saveLocalHighlight(settings, body)), state: await appState() });
+    }
+    if (req.method === "POST" && url.pathname === "/api/reading/todo") {
+      const settings = await loadSettings();
+      const body = await parseJsonBody(req);
+      return sendJson(res, 200, { ...(await createReadingTodo(settings, body)), state: await appState() });
     }
     if (req.method === "POST" && url.pathname === "/api/tasks/add") {
       const settings = await loadSettings();
