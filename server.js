@@ -1773,7 +1773,7 @@ async function parseJsonBody(req) {
 }
 
 async function sendJson(res, statusCode, body) {
-  res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store, no-cache, must-revalidate" });
   res.end(JSON.stringify(body));
 }
 
