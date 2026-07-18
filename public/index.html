@@ -258,38 +258,22 @@
                 <div id="calendarEventFeedback" class="form-feedback" hidden></div>
               </form>
             </section>
-            <section class="panel">
+            <section class="panel google-tasks-panel">
               <div class="panel-head compact">
                 <h2>Google Tasks</h2>
                 <div class="panel-head-actions">
-                  <span id="googleTasksStatus" class="path-label">未接続</span>
+                  <span id="googleTasksStatus" class="path-label">確認中</span>
                   <button id="googleTasksToggle" class="icon-button" type="button" aria-expanded="false" title="Google Tasks一覧を表示">▾</button>
                 </div>
               </div>
-              <form id="googleTaskForm" class="form-stack">
-                <label>
-                  TODO
-                  <input id="googleTaskTitle" type="text" placeholder="例: 仮免の標識問題を解く" />
-                </label>
-                <label>
-                  期限
-                  <input id="googleTaskDue" type="date" />
-                </label>
-                <label>
-                  メモ
-                  <textarea id="googleTaskNotes" rows="3" placeholder="任意"></textarea>
-                </label>
-                <button id="googleTaskSubmit" class="primary-button" type="submit">Google Tasksへ追加</button>
-                <button id="syncObsidianTasksButton" class="secondary-button" type="button">Obsidian TODOを同期</button>
-                <div id="googleTaskFeedback" class="form-feedback" hidden></div>
-              </form>
+              <p class="settings-note">TODOは下の「TODO追加」から追加します。Google接続済みなら、選んだカテゴリーのGoogle Tasksリストにも自動追加されます。</p>
               <div id="googleTasksList" class="mini-list"></div>
-            </section>
-            <section class="panel">
+            </section>            <section class="panel">
               <div class="panel-head compact">
                 <h2>TODO追加</h2>
-                <span class="path-label">受信箱</span>
+                <span class="path-label">Obsidian + Google Tasks</span>
               </div>
+              <p class="settings-note">ここから追加すれば、Obsidianに保存し、Google接続済みならGoogle Tasksにも同期します。</p>
               <form id="todoAddForm" class="form-stack">
                 <label>
                   TODO
@@ -312,7 +296,7 @@
     <option value="monthly">毎月</option>
   </select>
 </label>
-                <button class="primary-button" type="submit">TODOを追加</button>
+                <button class="primary-button" type="submit">TODOを追加・同期</button>
               </form>
               <div class="category-settings compact-category-settings">
                 <div class="category-settings-head">

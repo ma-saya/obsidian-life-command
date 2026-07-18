@@ -1455,7 +1455,7 @@ els.syncObsidianTasksButton?.addEventListener("click", async () => {
 els.startTimer.addEventListener("click", startTimer);
 els.stopTimer.addEventListener("click", stopTimer);
 
-els.googleTaskForm.addEventListener("submit", async (event) => {
+els.googleTaskForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   clearGoogleTaskFeedback();
   const title = els.googleTaskTitle.value.trim();
