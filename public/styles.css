@@ -246,6 +246,11 @@ h2 {
   right: 12px;
 }
 
+/* Form layouts declare display:grid, so make a collapsed panel authoritative. */
+.collapsible-panel.panel-collapsed > [hidden] {
+  display: none !important;
+}
+
 .icon-button,
 .secondary-button,
 .primary-button {
