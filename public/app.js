@@ -104,6 +104,16 @@ const els = {
   todoDueInput: document.querySelector("#todoDueInput"),
   todoKindInput: document.querySelector("#todoKindInput"),
   todoRepeatInput: document.querySelector("#todoRepeatInput"),
+  todoRepeatOptions: document.querySelector("#todoRepeatOptions"),
+  todoWeeklyDayField: document.querySelector("#todoWeeklyDayField"),
+  todoRepeatWeekdayInput: document.querySelector("#todoRepeatWeekdayInput"),
+  todoMonthlyModeField: document.querySelector("#todoMonthlyModeField"),
+  todoRepeatMonthlyModeInput: document.querySelector("#todoRepeatMonthlyModeInput"),
+  todoMonthlyDayField: document.querySelector("#todoMonthlyDayField"),
+  todoRepeatMonthDayInput: document.querySelector("#todoRepeatMonthDayInput"),
+  todoMonthlyNthFields: document.querySelector("#todoMonthlyNthFields"),
+  todoRepeatMonthNthInput: document.querySelector("#todoRepeatMonthNthInput"),
+  todoRepeatMonthWeekdayInput: document.querySelector("#todoRepeatMonthWeekdayInput"),
   diaryForm: document.querySelector("#diaryForm"),
   diaryHeading: document.querySelector("#diaryHeading"),
   diaryText: document.querySelector("#diaryText"),
@@ -735,6 +745,25 @@ function renderCommander(data) {
   els.commanderStudyMeta.textContent = state.timer.running ? formatDuration(currentElapsedSeconds()) : "勉強タイマーから記録できます";
   els.commanderLog.textContent = `${completionCount}件完了`;
   els.commanderLogMeta.textContent = studyCount ? `学習ログ ${studyCount}件` : "まだ学習ログはありません";
+}
+function updateTodoRepeatOptions() {
+  const repeat = els.todoRepeatInput?.value || "";
+  const monthlyMode = els.todoRepeatMonthlyModeInput?.value || "day";
+  if (els.todoRepeatOptions) els.todoRepeatOptions.hidden = !["weekly", "monthly"].includes(repeat);
+  if (els.todoWeeklyDayField) els.todoWeeklyDayField.hidden = repeat !== "weekly";
+  if (els.todoMonthlyModeField) els.todoMonthlyModeField.hidden = repeat !== "monthly";
+  if (els.todoMonthlyDayField) els.todoMonthlyDayField.hidden = repeat !== "monthly" || monthlyMode !== "day";
+  if (els.todoMonthlyNthFields) els.todoMonthlyNthFields.hidden = repeat !== "monthly" || monthlyMode !== "nth";
+}
+function todoRepeatRuleFromForm() {
+  const repeat = els.todoRepeatInput?.value || "";
+  if (repeat === "weekly") return `weekly:${els.todoRepeatWeekdayInput?.value || "mon"}`;
+  if (repeat === "monthly") return (els.todoRepeatMonthlyModeInput?.value || "day") === "nth" ? `monthly:${els.todoRepeatMonthNthInput?.value || "1"}-${els.todoRepeatMonthWeekdayInput?.value || "mon"}` : `monthly:${els.todoRepeatMonthDayInput?.value || "1"}`;
+  return repeat;
+}
+function initializeTodoRepeatForm() {
+  if (els.todoRepeatMonthDayInput && els.todoRepeatMonthDayInput.options.length === 0) els.todoRepeatMonthDayInput.innerHTML = Array.from({ length: 31 }, (_, index) => `<option value="${index + 1}">${index + 1}日</option>`).join("");
+  updateTodoRepeatOptions();
 }
 function syncTaskRepeatSelects() {
   els.todoList?.querySelectorAll(".task-repeat-select").forEach((select) => {
@@ -1615,12 +1644,13 @@ els.todoAddForm.addEventListener("submit", async (event) => {
         title,
         dueDate: els.todoDueInput.value,
         kind: els.todoKindInput.value,
-        repeatRule: els.todoRepeatInput?.value || ""
+        repeatRule: todoRepeatRuleFromForm()
       })
     });
     els.todoTitleInput.value = "";
     els.todoDueInput.value = "";
     if (els.todoRepeatInput) els.todoRepeatInput.value = "";
+    updateTodoRepeatOptions();
     els.todoKindInput.value = getTodoCategories().find((category) => category.id !== "google")?.id || "normal";
     render(result.state);
     if (result.googleTaskError) {
@@ -1970,4 +2000,8 @@ document.querySelectorAll(".nav-item").forEach((button) => {
 });
 
 initializePanelCollapses();
+initializeTodoRepeatForm();
 refresh();
+
+els.todoRepeatInput?.addEventListener("change", updateTodoRepeatOptions);
+els.todoRepeatMonthlyModeInput?.addEventListener("change", updateTodoRepeatOptions);

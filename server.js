@@ -507,6 +507,7 @@ async function readGoogleTasks(settings) {
         notes: task.notes || "",
         due: task.due || null,
         status: task.status || "needsAction",
+        repeatRule: normalizeRepeatRule(String(task.notes || "").match(/mlc:repeat=([^\s]+)/i)?.[1] || ""),
         taskListId,
         taskListTitle,
         category
@@ -528,6 +529,7 @@ async function createGoogleTask(settings, payload) {
   const title = String(payload.title || "").trim();
   let notes = String(payload.notes || "").trim();
   const dueDate = String(payload.dueDate || "").trim();
+  const repeatRule = normalizeRepeatRule(payload.repeatRule);
   const obsidianTaskId = String(payload.obsidianTaskId || "").trim();
   const category = normalizeTodoCategoryId(settings, String(payload.category || "google").trim());
   if (!title) throw new Error("Google Tasksへ追加するTODOを入力してください。");
@@ -538,6 +540,7 @@ async function createGoogleTask(settings, payload) {
     if (found) return { ...found, alreadyExists: true };
     notes = notes ? `${notes}\n${marker}` : marker;
   }
+  notes = repeatGoogleNotes(notes, repeatRule);
   const taskListId = await resolveGoogleTaskListId(settings, category);
   const body = { title, notes };
   if (/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
@@ -584,7 +587,8 @@ async function syncObsidianTasksToGoogle(settings) {
       dueDate: task.dueDate || "",
       notes: `Obsidian: ${task.fileRel}:${task.lineIndex + 1}`,
       obsidianTaskId: task.id,
-      category: taskCategoryId(settings, task)
+      category: taskCategoryId(settings, task),
+        repeatRule: task.repeatRule
     });
     if (googleTask.alreadyExists) {
       skippedCount += 1;
@@ -710,6 +714,25 @@ async function ensureDailyDiary(vaultPath) {
   return { relPath, filePath };
 }
 
+const REPEAT_WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+function normalizeRepeatRule(value) {
+  const rule = String(value || "").trim().toLowerCase();
+  if (!rule || ["daily", "weekly", "monthly"].includes(rule)) return rule;
+  if (/^weekly:(sun|mon|tue|wed|thu|fri|sat)$/.test(rule)) return rule;
+  if (/^monthly:(?:[1-9]|[12]\d|3[01])$/.test(rule)) return rule;
+  if (/^monthly:(?:[1-4]|last)-(sun|mon|tue|wed|thu|fri|sat)$/.test(rule)) return rule;
+  return "";
+}
+
+function repeatRulePattern() {
+  return /\s*🔁\s*(?:daily|weekly(?::(?:sun|mon|tue|wed|thu|fri|sat))?|monthly(?::(?:(?:[1-9]|[12]\d|3[01])|(?:[1-4]|last)-(?:sun|mon|tue|wed|thu|fri|sat)))?)/gi;
+}
+
+function repeatRuleFromTaskLine(line) {
+  const match = String(line || "").match(/🔁\s*(daily|weekly(?::(?:sun|mon|tue|wed|thu|fri|sat))?|monthly(?::(?:(?:[1-9]|[12]\d|3[01])|(?:[1-4]|last)-(?:sun|mon|tue|wed|thu|fri|sat)))?)/i);
+  return normalizeRepeatRule(match?.[1] || "");
+}
 function trimTaskText(rawTask) {
   return rawTask
     .replace(/^\s*-\s\[[ xX]\]\s*/, "")
@@ -718,7 +741,7 @@ function trimTaskText(rawTask) {
     .replace(/\s*#task\b/g, "")
     .replace(/\s*#reading-action\b/g, "")
     .replace(/\s*#mlc\/category\/[A-Za-z0-9_-]+/g, "")
-    .replace(/\s*🔁\s*(daily|weekly|monthly)/gi, "")
+    .replace(repeatRulePattern(), "")
     .trim();
 }
 
@@ -736,7 +759,7 @@ function parseTaskLine(line, fileRel, lineIndex, mtimeMs) {
     raw,
     indent,
     title: trimTaskText(raw),
-    repeatRule: body.match(/🔁\s*(daily|weekly|monthly)/i)?.[1]?.toLowerCase() || "",
+    repeatRule: repeatRuleFromTaskLine(body),
     dueDate: dueMatch?.[1] || null,
     doneDate: doneMatch?.[1] || null,
     completed: status.toLowerCase() === "x",
@@ -805,12 +828,43 @@ function appendUnderHeading(content, heading, entryLines) {
 }
 
 function nextRecurringDate(dateValue, rule) {
+  const normalized = normalizeRepeatRule(rule);
   const base = dateValue ? new Date(`${dateValue}T00:00:00Z`) : new Date(`${todayParts().isoDate}T00:00:00Z`);
-  if (Number.isNaN(base.valueOf())) return "";
-  if (rule === "daily") base.setUTCDate(base.getUTCDate() + 1);
-  if (rule === "weekly") base.setUTCDate(base.getUTCDate() + 7);
-  if (rule === "monthly") base.setUTCMonth(base.getUTCMonth() + 1);
-  return base.toISOString().slice(0, 10);
+  if (Number.isNaN(base.valueOf()) || !normalized) return "";
+  if (normalized === "daily") {
+    base.setUTCDate(base.getUTCDate() + 1);
+    return base.toISOString().slice(0, 10);
+  }
+  const weekly = normalized.match(/^weekly:(sun|mon|tue|wed|thu|fri|sat)$/);
+  if (weekly) {
+    const target = REPEAT_WEEKDAYS.indexOf(weekly[1]);
+    do { base.setUTCDate(base.getUTCDate() + 1); } while (base.getUTCDay() !== target);
+    return base.toISOString().slice(0, 10);
+  }
+  if (normalized === "weekly") {
+    base.setUTCDate(base.getUTCDate() + 7);
+    return base.toISOString().slice(0, 10);
+  }
+  const monthlyDay = normalized.match(/^monthly:(\d{1,2})$/);
+  const monthlyNth = normalized.match(/^monthly:([1-4]|last)-(sun|mon|tue|wed|thu|fri|sat)$/);
+  const nextYear = base.getUTCFullYear() + (base.getUTCMonth() === 11 ? 1 : 0);
+  const nextMonth = (base.getUTCMonth() + 1) % 12;
+  if (monthlyNth) {
+    const target = REPEAT_WEEKDAYS.indexOf(monthlyNth[2]);
+    const lastDay = new Date(Date.UTC(nextYear, nextMonth + 1, 0)).getUTCDate();
+    if (monthlyNth[1] === "last") {
+      const date = new Date(Date.UTC(nextYear, nextMonth, lastDay));
+      while (date.getUTCDay() !== target) date.setUTCDate(date.getUTCDate() - 1);
+      return date.toISOString().slice(0, 10);
+    }
+    const date = new Date(Date.UTC(nextYear, nextMonth, 1));
+    while (date.getUTCDay() !== target) date.setUTCDate(date.getUTCDate() + 1);
+    date.setUTCDate(date.getUTCDate() + (Number(monthlyNth[1]) - 1) * 7);
+    return date.getUTCMonth() === nextMonth ? date.toISOString().slice(0, 10) : "";
+  }
+  const day = monthlyDay ? Number(monthlyDay[1]) : base.getUTCDate();
+  const lastDay = new Date(Date.UTC(nextYear, nextMonth + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(nextYear, nextMonth, Math.min(day, lastDay))).toISOString().slice(0, 10);
 }
 
 async function appendToDailyDiary(vaultPath, heading, entryLines) {
@@ -859,8 +913,8 @@ async function addTask(settings, payload) {
   if (/\r|\n/.test(title)) throw new Error("TODO本文は1行で入力してください。");
 
   const dueDate = String(payload.dueDate || "").trim();
-  const repeatRule = String(payload.repeatRule || "").trim().toLowerCase();
-  if (repeatRule && !["daily", "weekly", "monthly"].includes(repeatRule)) throw new Error("繰り返しは毎日・毎週・毎月から選択してください。");
+  const repeatRule = normalizeRepeatRule(payload.repeatRule);
+  if (String(payload.repeatRule || "").trim() && !repeatRule) throw new Error("繰り返し設定が不正です。");
   if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
     throw new Error("期限は YYYY-MM-DD 形式で入力してください。");
   }
@@ -899,7 +953,8 @@ async function addTask(settings, payload) {
         dueDate,
         notes: `Obsidian: ${inboxRel}:${lineIndex + 1}`,
         obsidianTaskId: parsed?.id || "",
-        category: kind
+        category: kind,
+        repeatRule
       });
     } catch (error) {
       googleTaskError = error.message;
@@ -931,8 +986,9 @@ async function completeLinkedGoogleTask(settings, payload, title) {
   return linked;
 }
 function repeatGoogleNotes(notes, rule) {
-  const base = String(notes || "").replace(/(?:^|\n)mlc:repeat=(daily|weekly|monthly)/gi, "").trim();
-  return rule ? (base ? base + "\n" : "") + "mlc:repeat=" + rule : base;
+  const base = String(notes || "").replace(/(?:^|\n)mlc:repeat=(?:daily|weekly(?::(?:sun|mon|tue|wed|thu|fri|sat))?|monthly(?::(?:(?:[1-9]|[12]\d|3[01])|(?:[1-4]|last)-(?:sun|mon|tue|wed|thu|fri|sat)))?)/gi, "").trim();
+  const normalized = normalizeRepeatRule(rule);
+  return normalized ? (base ? base + "\n" : "") + "mlc:repeat=" + normalized : base;
 }
 async function syncLinkedGoogleRepeat(settings, payload, rule) {
   if (!settings.googleTokens?.refresh_token && !settings.googleTokens?.access_token) return null;
@@ -952,8 +1008,8 @@ async function syncLinkedGoogleRepeat(settings, payload, rule) {
   return linked;
 }
 async function updateTaskRepeatRule(settings, payload = {}) {
-  const rule = String(payload.repeatRule || "").trim().toLowerCase();
-  if (rule && !["daily", "weekly", "monthly"].includes(rule)) throw new Error("繰り返し設定が不正です。");
+  const rule = normalizeRepeatRule(payload.repeatRule);
+  if (String(payload.repeatRule || "").trim() && !rule) throw new Error("繰り返し設定が不正です。");
   const filePath = vaultFilePath(settings.vaultPath, payload.fileRel);
   const content = await fs.readFile(filePath, "utf8");
   const lines = content.replace(/\r\n/g, "\n").split("\n");
@@ -963,7 +1019,7 @@ async function updateTaskRepeatRule(settings, payload = {}) {
   }
   if (lineIndex === -1) throw new Error("対象TODO行が見つかりません。Obsidian側で変更されている可能性があります。");
   if (!/^\s*-\s\[ \]\s/.test(lines[lineIndex])) throw new Error("未完了TODOだけ繰り返し設定を変更できます。");
-  let nextLine = lines[lineIndex].replace(/\s*🔁\s*(daily|weekly|monthly)/gi, "").trimEnd();
+  let nextLine = lines[lineIndex].replace(repeatRulePattern(), "").trimEnd();
   if (rule) nextLine += " 🔁 " + rule;
   lines[lineIndex] = nextLine;
   await fs.writeFile(filePath, lines.join("\n"), "utf8");
@@ -998,10 +1054,10 @@ async function completeTask(settings, payload) {
   await fs.writeFile(filePath, lines.join("\n"), "utf8");
 
   const title = trimTaskText(after);
-  const repeatRule = String(payload.repeatRule || "").trim().toLowerCase();
+  const repeatRule = normalizeRepeatRule(payload.repeatRule || repeatRuleFromTaskLine(after));
   const linkedGoogleTask = await completeLinkedGoogleTask(settings, { ...payload, lineIndex }, title);
   let recurringTask = null;
-  if (repeatRule && ["daily", "weekly", "monthly"].includes(repeatRule)) {
+  if (repeatRule) {
     const nextDue = nextRecurringDate(payload.dueDate || null, repeatRule);
     const categoryTag = payload.category && !["normal", "reading"].includes(payload.category) ? ` #mlc/category/${payload.category}` : "";
     const nextLine = `- [ ] ${title}${nextDue ? ` 📅 ${nextDue}` : ""} 🔁 ${repeatRule} #task${categoryTag}`;
@@ -1015,9 +1071,10 @@ async function completeTask(settings, payload) {
         const recurringGoogleTask = await createGoogleTask(settings, {
           title,
           dueDate: nextDue,
-          notes: "Obsidian: " + payload.fileRel + ":" + (lineIndex + 2) + "\nmlc:repeat=" + repeatRule,
+          notes: "Obsidian: " + payload.fileRel + ":" + (lineIndex + 2),
           obsidianTaskId: nextParsed?.id || "",
-          category: payload.category || "normal"
+          category: payload.category || "normal",
+           repeatRule
         });
         recurringTask.googleTaskId = recurringGoogleTask?.id || "";
       } catch (error) {
