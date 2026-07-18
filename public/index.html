@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Masa Life Command</title>
-    <link rel="stylesheet" href="/styles.css?v=20260715-calendar-fix" />
+    <link rel="stylesheet" href="/styles.css?v=20260718-sync-collapse" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -36,12 +36,15 @@
             <h1>今日</h1>
             <p id="todayLine">読み込み中...</p>
           </div>
-          <button id="refreshButton" class="icon-button" type="button" title="再読み込み" aria-label="再読み込み">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M20 12a8 8 0 1 1-2.34-5.66" />
-              <path d="M20 4v6h-6" />
-            </svg>
-          </button>
+          <div class="topbar-actions">
+            <button id="bulkSyncButton" class="secondary-button" type="button">Google Tasksを一括同期</button>
+            <button id="refreshButton" class="icon-button" type="button" title="再読み込み" aria-label="再読み込み">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+                <path d="M20 4v6h-6" />
+              </svg>
+            </button>
+          </div>
         </header>
 
         <div id="message" class="message" hidden></div>
@@ -481,6 +484,6 @@
         </section>
       </main>
     </div>
-    <script src="/app.js?v=20260715-calendar-fix" type="module"></script>
+    <script src="/app.js?v=20260718-sync-collapse" type="module"></script>
   </body>
 </html>

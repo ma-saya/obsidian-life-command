@@ -77,6 +77,7 @@ const els = {
   localHighlightFeedback: document.querySelector("#localHighlightFeedback"),
   message: document.querySelector("#message"),
   refreshButton: document.querySelector("#refreshButton"),
+  bulkSyncButton: document.querySelector("#bulkSyncButton"),
   todoRefresh: document.querySelector("#todoRefresh"),
   calendarEventForm: document.querySelector("#calendarEventForm"),
   calendarEventTitle: document.querySelector("#calendarEventTitle"),
@@ -992,6 +993,49 @@ function updateGoogleTasksCollapse() {
   els.googleTasksToggle.title = state.googleTasksExpanded ? "Google Tasks一覧を隠す" : "Google Tasks一覧を表示";
   els.googleTasksToggle.setAttribute("aria-expanded", String(state.googleTasksExpanded));
 }
+function initializePanelCollapses() {
+  const panels = [
+    ...document.querySelectorAll(".panel"),
+    ...document.querySelectorAll(".commander-panel")
+  ];
+
+  panels.forEach((panel, index) => {
+    if (panel.querySelector(":scope > .panel-collapse-toggle")) return;
+    const head = panel.querySelector(":scope > .panel-head, :scope > .commander-head");
+    const title = head?.querySelector("h2") || panel.querySelector(":scope > h2");
+    if (!title) return;
+
+    const body = [...panel.children].filter((child) => child !== head && child !== title);
+    if (body.length === 0) return;
+
+    const key = `mlc.panel-collapsed.${index}.${title.textContent.trim()}`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "icon-button panel-collapse-toggle";
+
+    const apply = (collapsed) => {
+      panel.classList.toggle("panel-collapsed", collapsed);
+      body.forEach((item) => { item.hidden = collapsed; });
+      button.textContent = collapsed ? "▸" : "▾";
+      button.title = collapsed ? `${title.textContent.trim()}を開く` : `${title.textContent.trim()}を閉じる`;
+      button.setAttribute("aria-label", button.title);
+      button.setAttribute("aria-expanded", String(!collapsed));
+    };
+
+    button.addEventListener("click", () => {
+      const collapsed = !panel.classList.contains("panel-collapsed");
+      apply(collapsed);
+      localStorage.setItem(key, String(collapsed));
+    });
+
+    const actions = head?.querySelector(".panel-head-actions");
+    if (actions) actions.append(button);
+    else if (head) head.append(button);
+    else panel.append(button);
+    panel.classList.add("collapsible-panel");
+    apply(localStorage.getItem(key) === "true");
+  });
+}
 function renderGoogleTasks(googleTasks) {
   if (!els.googleTasksStatus || !els.googleTasksList) return;
   if (!googleTasks?.configured) {
@@ -1406,6 +1450,21 @@ els.sendFocusTodoButton?.addEventListener("click", async () => {
   }
 });
 els.refreshButton.addEventListener("click", refresh);
+els.bulkSyncButton?.addEventListener("click", async () => {
+  els.bulkSyncButton.disabled = true;
+  els.bulkSyncButton.textContent = "同期中...";
+  try {
+    const result = await api("/api/google-tasks/sync-obsidian", { method: "POST" });
+    render(result.state);
+    const skipped = result.skippedCount ? `、既に同期済み ${result.skippedCount}件` : "";
+    showMessage(`Google Tasksを一括同期しました。Obsidianから ${result.createdCount}件追加${skipped}。`);
+  } catch (error) {
+    showMessage(error.message, "error");
+  } finally {
+    els.bulkSyncButton.disabled = false;
+    els.bulkSyncButton.textContent = "Google Tasksを一括同期";
+  }
+});
 els.todoRefresh.addEventListener("click", refresh);
 els.kanbanRefresh?.addEventListener("click", refresh);
 els.googleConnectButton.addEventListener("click", async () => {
@@ -1910,4 +1969,5 @@ document.querySelectorAll(".nav-item").forEach((button) => {
   });
 });
 
+initializePanelCollapses();
 refresh();

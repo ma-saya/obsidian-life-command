@@ -153,6 +153,12 @@ button {
   align-items: flex-start;
   margin-bottom: 16px;
 }
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 
 h1,
 h2 {
@@ -221,6 +227,23 @@ h2 {
 
 .panel-head.compact {
   align-items: center;
+}
+.collapsible-panel {
+  position: relative;
+}
+
+.collapsible-panel > h2 {
+  padding-right: 46px;
+}
+
+.panel-collapse-toggle {
+  flex: 0 0 auto;
+}
+
+.collapsible-panel > .panel-collapse-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
 }
 
 .icon-button,
